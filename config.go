@@ -7,9 +7,8 @@ import (
 // Config 应用配置
 type Config struct {
 	// 输入配置
-	InputFile string `toml:"input_file"` // 本地HTML文件路径(可选)
-	TID       string `toml:"tid"`        // 帖子ID(用于在线抓取)
-	BaseURL   string `toml:"base_url"`   // 论坛基础URL
+	TID     string `toml:"tid"`      // 帖子ID(用于在线抓取)
+	BaseURL string `toml:"base_url"` // 论坛基础URL
 
 	// 输出配置
 	OutputFile string `toml:"output_file"` // 输出Markdown文件路径

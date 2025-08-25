@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/url"
-	"os"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -57,26 +57,13 @@ func NewHTMLParser() *HTMLParser {
 	return &HTMLParser{}
 }
 
-// LoadFromFile 从文件加载HTML
-func (p *HTMLParser) LoadFromFile(filepath string) error {
-	file, err := os.Open(filepath)
-	if err != nil {
-		return fmt.Errorf("打开文件失败: %v", err)
-	}
-	defer file.Close()
-
-	doc, err := goquery.NewDocumentFromReader(file)
-	if err != nil {
-		return fmt.Errorf("解析HTML文档失败: %v", err)
-	}
-
-	p.doc = doc
-	return nil
-}
-
 // LoadFromString 从字符串加载HTML
 func (p *HTMLParser) LoadFromString(html string) error {
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	return p.LoadFromReader(strings.NewReader(html))
+}
+
+func (p *HTMLParser) LoadFromReader(reader io.Reader) error {
+	doc, err := goquery.NewDocumentFromReader(reader)
 	if err != nil {
 		return fmt.Errorf("解析HTML字符串失败: %v", err)
 	}

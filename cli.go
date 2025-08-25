@@ -108,13 +108,12 @@ var cookieImportCmd = &cobra.Command{
 	RunE: runCookieImport,
 }
 
-func init() {
+func initCommand() {
 	// 初始化默认配置
 	config = NewDefaultConfig()
 
 	// 根命令参数
 	rootCmd.PersistentFlags().StringVar(&flagTID, "tid", "", "帖子ID (用于在线抓取)")
-	rootCmd.PersistentFlags().StringVar(&flagInputFile, "input", "", "本地HTML文件路径")
 	rootCmd.PersistentFlags().StringVar(&flagOutputFile, "output", "post.md", "输出Markdown文件路径")
 	rootCmd.PersistentFlags().StringVar(&flagCacheDir, "cache-dir", "./cache", "附件缓存目录")
 	rootCmd.PersistentFlags().StringVar(&flagBaseURL, "base-url", "https://north-plus.net/", "论坛基础URL")
@@ -156,10 +155,6 @@ func initConfig() error {
 	// 更新配置参数
 	if flagTID != "" {
 		config.TID = flagTID
-	}
-
-	if flagInputFile != "" {
-		config.InputFile = flagInputFile
 	}
 
 	if flagOutputFile != "" {
@@ -236,13 +231,6 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 		post, err = fetcher.FetchPost(config.TID)
 		if err != nil {
 			return fmt.Errorf("抓取帖子失败: %v", err)
-		}
-	} else if config.InputFile != "" {
-		// 本地文件模式
-		fetcher := NewLocalPostFetcher(htmlParser, &config.Selectors)
-		post, err = fetcher.FetchPost(config.InputFile)
-		if err != nil {
-			return fmt.Errorf("解析本地文件失败: %v", err)
 		}
 	} else {
 		return fmt.Errorf("必须指定 --tid 或 --input 参数")
@@ -346,7 +334,6 @@ func validateFlags() error {
 // applyFlags 应用命令行参数到配置
 func applyFlags() {
 	config.TID = flagTID
-	config.InputFile = flagInputFile
 	config.OutputFile = flagOutputFile
 	config.CacheDir = flagCacheDir
 	config.BaseURL = flagBaseURL
@@ -379,30 +366,24 @@ func applyFlags() {
 
 // loadHTML 加载HTML内容
 func loadHTML(parser *HTMLParser) error {
-	if config.InputFile != "" {
-		// 从本地文件加载
-		fmt.Printf("正在加载本地HTML文件: %s\n", config.InputFile)
-		return parser.LoadFromFile(config.InputFile)
-	} else {
-		// 从在线抓取
-		fmt.Printf("正在抓取在线帖子: TID=%s\n", config.TID)
+	// 从在线抓取
+	fmt.Printf("正在抓取在线帖子: TID=%s\n", config.TID)
 
-		// 创建HTTP抓取器
-		fetcher := NewHTTPFetcher(&config.HTTPOpts, config.BaseURL)
+	// 创建HTTP抓取器
+	fetcher := NewHTTPFetcher(&config.HTTPOpts, config.BaseURL)
 
-		// 抓取HTML内容
-		html, err := fetcher.FetchPost(config.TID)
-		if err != nil {
-			return err
-		}
-
-		// 设置基础URL
-		postURL := fmt.Sprintf("%s/read.php?tid-%s.html",
-			strings.TrimRight(config.BaseURL, "/"), config.TID)
-		parser.SetBaseURL(postURL)
-
-		return parser.LoadFromString(html)
+	// 抓取HTML内容
+	html, err := fetcher.FetchPost(config.TID)
+	if err != nil {
+		return err
 	}
+
+	// 设置基础URL
+	postURL := fmt.Sprintf("%s/read.php?tid-%s.html",
+		strings.TrimRight(config.BaseURL, "/"), config.TID)
+	parser.SetBaseURL(postURL)
+
+	return parser.LoadFromString(html)
 }
 
 // downloadAttachments 下载附件
