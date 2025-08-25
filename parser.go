@@ -44,14 +44,12 @@ type HTMLParser struct {
 	baseURL string
 }
 
-// GoqueryElement goquery元素包装
-type GoqueryElement struct {
-	selection *goquery.Selection
-}
-
-// GoqueryElements goquery元素集合包装
-type GoqueryElements struct {
-	selection *goquery.Selection
+// ensureSelection 确保selection不为nil，消除特殊情况
+func (p *HTMLParser) ensureSelection() *goquery.Selection {
+	if p.doc == nil {
+		return &goquery.Selection{}
+	}
+	return p.doc.Selection
 }
 
 // NewHTMLParser 创建新的HTML解析器
@@ -89,21 +87,13 @@ func (p *HTMLParser) LoadFromString(html string) error {
 
 // FindElement 查找单个元素
 func (p *HTMLParser) FindElement(selector string) Element {
-	if p.doc == nil {
-		return &GoqueryElement{selection: &goquery.Selection{}}
-	}
-
-	selection := p.doc.Find(selector).First()
+	selection := p.ensureSelection().Find(selector).First()
 	return &GoqueryElement{selection: selection}
 }
 
 // FindElements 查找多个元素
 func (p *HTMLParser) FindElements(selector string) Elements {
-	if p.doc == nil {
-		return &GoqueryElements{selection: &goquery.Selection{}}
-	}
-
-	selection := p.doc.Find(selector)
+	selection := p.ensureSelection().Find(selector)
 	return &GoqueryElements{selection: selection}
 }
 
@@ -159,180 +149,141 @@ func (p *HTMLParser) ResolveURL(relativeURL string) string {
 	return resolved.String()
 }
 
-// GoqueryElement 方法实现
+// GoqueryElement goquery元素包装
+type GoqueryElement struct {
+	selection *goquery.Selection
+}
+
+// GoqueryElements goquery元素集合包装
+type GoqueryElements struct {
+	selection *goquery.Selection
+}
+
+// ensureSelection 确保selection不为nil，消除特殊情况
+func (e *GoqueryElement) ensureSelection() *goquery.Selection {
+	if e.selection == nil {
+		return &goquery.Selection{}
+	}
+	return e.selection
+}
 
 // Text 获取元素文本内容
 func (e *GoqueryElement) Text() string {
-	if e.selection == nil {
-		return ""
-	}
-	return strings.TrimSpace(e.selection.Text())
+	return strings.TrimSpace(e.ensureSelection().Text())
 }
 
 // HTML 获取元素HTML内容
 func (e *GoqueryElement) HTML() string {
-	if e.selection == nil {
-		return ""
-	}
-	html, _ := e.selection.Html()
+	html, _ := e.ensureSelection().Html()
 	return html
 }
 
 // Attr 获取元素属性
 func (e *GoqueryElement) Attr(name string) (string, bool) {
-	if e.selection == nil {
-		return "", false
-	}
-	return e.selection.Attr(name)
+	return e.ensureSelection().Attr(name)
 }
 
 // Find 在元素内查找子元素
 func (e *GoqueryElement) Find(selector string) Elements {
-	if e.selection == nil {
-		return &GoqueryElements{selection: &goquery.Selection{}}
-	}
-	return &GoqueryElements{selection: e.selection.Find(selector)}
+	return &GoqueryElements{selection: e.ensureSelection().Find(selector)}
 }
 
 // First 获取第一个元素
 func (e *GoqueryElement) First() Element {
-	if e.selection == nil {
-		return &GoqueryElement{selection: &goquery.Selection{}}
-	}
-	return &GoqueryElement{selection: e.selection.First()}
+	return &GoqueryElement{selection: e.ensureSelection().First()}
 }
 
 // Last 获取最后一个元素
 func (e *GoqueryElement) Last() Element {
-	if e.selection == nil {
-		return &GoqueryElement{selection: &goquery.Selection{}}
-	}
-	return &GoqueryElement{selection: e.selection.Last()}
+	return &GoqueryElement{selection: e.ensureSelection().Last()}
 }
 
 // Eq 获取指定索引的元素
 func (e *GoqueryElement) Eq(index int) Element {
-	if e.selection == nil {
-		return &GoqueryElement{selection: &goquery.Selection{}}
-	}
-	return &GoqueryElement{selection: e.selection.Eq(index)}
+	return &GoqueryElement{selection: e.ensureSelection().Eq(index)}
 }
 
 // Length 获取元素数量
 func (e *GoqueryElement) Length() int {
-	if e.selection == nil {
-		return 0
-	}
-	return e.selection.Length()
+	return e.ensureSelection().Length()
 }
 
 // Each 遍历元素
 func (e *GoqueryElement) Each(fn func(int, Element)) {
-	if e.selection == nil {
-		return
-	}
-	e.selection.Each(func(i int, s *goquery.Selection) {
+	e.ensureSelection().Each(func(i int, s *goquery.Selection) {
 		fn(i, &GoqueryElement{selection: s})
 	})
 }
 
 // HasClass 检查是否有指定CSS类
 func (e *GoqueryElement) HasClass(class string) bool {
-	if e.selection == nil {
-		return false
-	}
-	return e.selection.HasClass(class)
+	return e.ensureSelection().HasClass(class)
 }
 
 // Parent 获取父元素
 func (e *GoqueryElement) Parent() Element {
-	if e.selection == nil {
-		return &GoqueryElement{selection: &goquery.Selection{}}
-	}
-	return &GoqueryElement{selection: e.selection.Parent()}
+	return &GoqueryElement{selection: e.ensureSelection().Parent()}
 }
 
 // Children 获取子元素
 func (e *GoqueryElement) Children() Elements {
-	if e.selection == nil {
-		return &GoqueryElements{selection: &goquery.Selection{}}
-	}
-	return &GoqueryElements{selection: e.selection.Children()}
+	return &GoqueryElements{selection: e.ensureSelection().Children()}
 }
 
 // Next 获取下一个兄弟元素
 func (e *GoqueryElement) Next() Element {
-	if e.selection == nil {
-		return &GoqueryElement{selection: &goquery.Selection{}}
-	}
-	return &GoqueryElement{selection: e.selection.Next()}
+	return &GoqueryElement{selection: e.ensureSelection().Next()}
 }
 
 // Prev 获取上一个兄弟元素
 func (e *GoqueryElement) Prev() Element {
-	if e.selection == nil {
-		return &GoqueryElement{selection: &goquery.Selection{}}
-	}
-	return &GoqueryElement{selection: e.selection.Prev()}
+	return &GoqueryElement{selection: e.ensureSelection().Prev()}
 }
 
 // GoqueryElements 方法实现
 
+// ensureSelection 确保selection不为nil，消除特殊情况
+func (es *GoqueryElements) ensureSelection() *goquery.Selection {
+	if es.selection == nil {
+		return &goquery.Selection{}
+	}
+	return es.selection
+}
+
 // Length 获取元素集合大小
 func (es *GoqueryElements) Length() int {
-	if es.selection == nil {
-		return 0
-	}
-	return es.selection.Length()
+	return es.ensureSelection().Length()
 }
 
 // Eq 获取指定索引的元素
 func (es *GoqueryElements) Eq(index int) Element {
-	if es.selection == nil {
-		return &GoqueryElement{selection: &goquery.Selection{}}
-	}
-	return &GoqueryElement{selection: es.selection.Eq(index)}
+	return &GoqueryElement{selection: es.ensureSelection().Eq(index)}
 }
 
 // First 获取第一个元素
 func (es *GoqueryElements) First() Element {
-	if es.selection == nil {
-		return &GoqueryElement{selection: &goquery.Selection{}}
-	}
-	return &GoqueryElement{selection: es.selection.First()}
+	return &GoqueryElement{selection: es.ensureSelection().First()}
 }
 
 // Last 获取最后一个元素
 func (es *GoqueryElements) Last() Element {
-	if es.selection == nil {
-		return &GoqueryElement{selection: &goquery.Selection{}}
-	}
-	return &GoqueryElement{selection: es.selection.Last()}
+	return &GoqueryElement{selection: es.ensureSelection().Last()}
 }
 
 // Each 遍历元素集合
 func (es *GoqueryElements) Each(fn func(int, Element)) {
-	if es.selection == nil {
-		return
-	}
-	es.selection.Each(func(i int, s *goquery.Selection) {
+	es.ensureSelection().Each(func(i int, s *goquery.Selection) {
 		fn(i, &GoqueryElement{selection: s})
 	})
 }
 
 // Text 获取所有元素的文本内容
 func (es *GoqueryElements) Text() string {
-	if es.selection == nil {
-		return ""
-	}
-	return strings.TrimSpace(es.selection.Text())
+	return strings.TrimSpace(es.ensureSelection().Text())
 }
 
 // HTML 获取第一个元素的HTML内容
 func (es *GoqueryElements) HTML() string {
-	if es.selection == nil {
-		return ""
-	}
-	html, _ := es.selection.Html()
+	html, _ := es.ensureSelection().Html()
 	return html
 }
