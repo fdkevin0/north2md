@@ -141,10 +141,26 @@ func (e *DataExtractor) extractPostEntry(table Element, floor, baseURL string) (
 	}
 	entry.Author = *author
 
-	// 提取发帖时间
+	// 提取发帖时间 - 修复选择器，确保只选择正确的时间元素
 	timeElement := table.Find(e.selectors.PostTime)
 	if timeElement.Length() > 0 {
-		entry.PostTime = e.parsePostTime(timeElement.Text())
+		// 如果有多个匹配元素，选择第一个包含时间格式的元素
+		var correctTimeElement Element
+		timeElement.Each(func(i int, el Element) {
+			text := strings.TrimSpace(el.Text())
+			// 检查是否符合时间格式 YYYY-MM-DD HH:MM
+			if matched, _ := regexp.MatchString(`^\d{4}-\d{1,2}-\d{1,2} \d{1,2}:\d{2}$`, text); matched {
+				correctTimeElement = el
+				return
+			}
+		})
+
+		if correctTimeElement.Length() > 0 {
+			entry.PostTime = e.parsePostTime(correctTimeElement.Text())
+		} else {
+			// 备用方案：使用第一个元素
+			entry.PostTime = e.parsePostTime(timeElement.First().Text())
+		}
 	}
 
 	// 提取帖子内容
@@ -191,14 +207,20 @@ func (e *DataExtractor) extractPostEntry(table Element, floor, baseURL string) (
 func (e *DataExtractor) ExtractAuthor(element Element) (*Author, error) {
 	author := &Author{}
 
-	// 提取用户名 - 查找strong标签
-	usernameElement := element.Find("strong")
+	// 提取用户名 - 查找strong标签在用户链接内
+	usernameElement := element.Find("a[href*=\"u.php\"] strong")
 	if usernameElement.Length() > 0 {
 		author.Username = strings.TrimSpace(usernameElement.Text())
+	} else {
+		// 备用方案：直接查找strong标签
+		usernameElement := element.Find("strong")
+		if usernameElement.Length() > 0 {
+			author.Username = strings.TrimSpace(usernameElement.Text())
+		}
 	}
 
 	// 提取UID - 从链接href中获取
-	uidElement := element.Find("a[href*=\"u.php?uid\"]")
+	uidElement := element.Find("a[href*=\"u.php\"]")
 	if uidElement.Length() > 0 {
 		if href, exists := uidElement.First().Attr("href"); exists {
 			author.UID = e.extractUIDFromURL(href)
@@ -206,19 +228,120 @@ func (e *DataExtractor) ExtractAuthor(element Element) (*Author, error) {
 	}
 
 	// 提取头像
-	avatarElement := element.Find("img[src*=\"avatar\"], img[src*=\"face\"]")
+	avatarElement := element.Find("img[loading=\"lazy\"]")
 	if avatarElement.Length() > 0 {
 		if src, exists := avatarElement.First().Attr("src"); exists {
 			author.Avatar = src
 		}
 	}
 
-	// 提取其他统计信息 - 从右侧信息区域
-	infoElement := element.Find(".tiptop .tar, .authorinfo")
+	// 提取其他统计信息 - 从用户信息区域
+	// 首先尝试查找显示的用户信息
+	infoElement := element.Find(".user-info, .user-infoWrap")
 	if infoElement.Length() > 0 {
-		infoText := infoElement.Text()
-		author.PostCount = e.extractPostCount(infoText)
-		author.RegisterDate = e.extractRegisterDate(infoText)
+		for i := 0; i < infoElement.Length(); i++ {
+			infoText := infoElement.Eq(i).Text()
+			if author.PostCount == 0 {
+				author.PostCount = e.extractPostCount(infoText)
+			}
+			if author.RegisterDate == "" {
+				author.RegisterDate = e.extractRegisterDate(infoText)
+			}
+			if author.LastLogin == "" {
+				author.LastLogin = e.extractLastLogin(infoText)
+			}
+		}
+		author.Signature = e.extractSignature(element)
+	} else {
+		// 如果没有找到显示的用户信息，尝试查找隐藏的用户信息
+		hiddenInfoElement := element.Find(".user-infoWrap")
+		if hiddenInfoElement.Length() > 0 {
+			infoText := hiddenInfoElement.Text()
+			author.PostCount = e.extractPostCount(infoText)
+			author.RegisterDate = e.extractRegisterDate(infoText)
+			author.LastLogin = e.extractLastLogin(infoText)
+			author.Signature = e.extractSignature(element)
+		} else {
+			// 备用方案：查找任何包含用户信息的元素
+			// 遍历所有子元素查找用户信息
+			element.Find("*").Each(func(i int, el Element) {
+				text := el.Text()
+				// 检查元素文本是否包含关键信息
+				if strings.Contains(text, "UID:") || strings.Contains(text, "发帖:") || strings.Contains(text, "注册时间:") || strings.Contains(text, "最后登录:") {
+					if author.PostCount == 0 {
+						author.PostCount = e.extractPostCount(text)
+					}
+					if author.RegisterDate == "" {
+						author.RegisterDate = e.extractRegisterDate(text)
+					}
+					if author.LastLogin == "" {
+						author.LastLogin = e.extractLastLogin(text)
+					}
+				}
+			})
+
+			// 提取签名
+			author.Signature = e.extractSignature(element)
+		}
+	}
+
+	// 如果仍然没有提取到UID，尝试从其他地方获取
+	if author.UID == "" {
+		// 尝试从用户名链接中提取UID
+		usernameLink := element.Find("a[href*=\"u.php\"]")
+		if usernameLink.Length() > 0 {
+			if href, exists := usernameLink.First().Attr("href"); exists {
+				author.UID = e.extractUIDFromURL(href)
+			}
+		}
+	}
+
+	// 特殊处理：如果作者信息在隐藏的.user-info元素中
+	// 查找所有.user-info元素，包括隐藏的
+	userInfoElements := element.Find(".user-info")
+	if userInfoElements.Length() > 0 {
+		for i := 0; i < userInfoElements.Length(); i++ {
+			infoElement := userInfoElements.Eq(i)
+			infoText := infoElement.Text()
+
+			// 提取UID
+			if author.UID == "" {
+				uidPattern := regexp.MustCompile(`UID:\s*(\d+)`)
+				uidMatches := uidPattern.FindStringSubmatch(infoText)
+				if len(uidMatches) > 1 {
+					author.UID = uidMatches[1]
+				}
+			}
+
+			// 提取发帖数
+			if author.PostCount == 0 {
+				postCountPattern := regexp.MustCompile(`发帖:\s*(\d+)`)
+				postCountMatches := postCountPattern.FindStringSubmatch(infoText)
+				if len(postCountMatches) > 1 {
+					if count, err := strconv.Atoi(postCountMatches[1]); err == nil {
+						author.PostCount = count
+					}
+				}
+			}
+
+			// 提取注册时间
+			if author.RegisterDate == "" {
+				registerDatePattern := regexp.MustCompile(`注册时间:\s*([0-9\-]+)`)
+				registerDateMatches := registerDatePattern.FindStringSubmatch(infoText)
+				if len(registerDateMatches) > 1 {
+					author.RegisterDate = registerDateMatches[1]
+				}
+			}
+
+			// 提取最后登录时间
+			if author.LastLogin == "" {
+				lastLoginPattern := regexp.MustCompile(`最后登录:\s*([0-9\-]+)`)
+				lastLoginMatches := lastLoginPattern.FindStringSubmatch(infoText)
+				if len(lastLoginMatches) > 1 {
+					author.LastLogin = lastLoginMatches[1]
+				}
+			}
+		}
 	}
 
 	return author, nil
@@ -333,6 +456,8 @@ func (e *DataExtractor) parsePostTime(timeText string) time.Time {
 		"2006/01/02 15:04:05",
 		"1-2 15:04",
 		"01-02 15:04",
+		"2006-1-2 15:04",
+		"2006-01-02 15:04",
 	}
 
 	for _, format := range formats {
@@ -343,6 +468,7 @@ func (e *DataExtractor) parsePostTime(timeText string) time.Time {
 			}
 			return t
 		}
+
 	}
 
 	// 如果都失败了，返回当前时间
@@ -401,6 +527,34 @@ func (e *DataExtractor) extractRegisterDate(text string) string {
 	if len(matches) > 1 {
 		return matches[1]
 	}
+	return ""
+}
+
+// extractLastLogin 从文本中提取最后登录时间
+func (e *DataExtractor) extractLastLogin(text string) string {
+	re := regexp.MustCompile(`最后登录[：:]?\s*(\d{4}-\d{1,2}-\d{1,2})`)
+	matches := re.FindStringSubmatch(text)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+	return ""
+}
+
+// extractSignature 从元素中提取个性签名
+func (e *DataExtractor) extractSignature(element Element) string {
+	// 查找个性签名 - 在tiptop区域的bianji div中
+	signatureElement := element.Find(".tiptop .bianji")
+	if signatureElement.Length() > 0 {
+		text := strings.TrimSpace(signatureElement.Text())
+		// 移除括号
+		text = strings.TrimPrefix(text, "（")
+		text = strings.TrimSuffix(text, "）")
+		if text != "" {
+			return text
+		}
+	}
+
+	// 对于第二条回复这样的情况，如果用户信息中的昵称与用户名相同，则不视为签名
 	return ""
 }
 
