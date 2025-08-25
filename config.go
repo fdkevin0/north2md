@@ -75,11 +75,11 @@ func NewDefaultConfig() *Config {
 		CacheDir:   "./cache",
 		Selectors: HTMLSelectors{
 			Title:       "h1#subject_tpc",
-			Forum:       ".nav a",
-			PostTable:   "table", // 使用更通用的选择器
+			Forum:       "#breadcrumbs .crumbs-item.gray3:nth-child(3)", // 导航面包屑中的版块链接（第三个）
+			PostTable:   "table.js-post",                                // 只匹配帖子表格
 			AuthorName:  "strong",
 			PostTime:    ".tiptop .gray",
-			PostContent: "*", // 使用通配符选择器，匹配任何元素
+			PostContent: "div[id^='read_']", // 匹配read_开头的div元素
 			Floor:       ".tiptop .fl a",
 			AuthorInfo:  ".tiptop .tar",
 			Avatar:      "img[src*=\"avatar\"]",

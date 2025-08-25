@@ -106,6 +106,11 @@ func (p *HTMLParser) GetBaseURL() string {
 	baseElement := p.FindElement("base")
 	if baseElement.Length() > 0 {
 		if href, exists := baseElement.Attr("href"); exists {
+			// 处理协议相对URL
+			if strings.HasPrefix(href, "//") {
+				// 默认使用https协议
+				return "https:" + href
+			}
 			return href
 		}
 	}
@@ -131,6 +136,16 @@ func (p *HTMLParser) ResolveURL(relativeURL string) string {
 
 	baseURL := p.GetBaseURL()
 	if baseURL == "" {
+		return relativeURL
+	}
+
+	// 处理协议相对URL (//example.com/path)
+	if strings.HasPrefix(relativeURL, "//") {
+		if strings.HasPrefix(baseURL, "https://") {
+			return "https:" + relativeURL
+		} else if strings.HasPrefix(baseURL, "http://") {
+			return "http:" + relativeURL
+		}
 		return relativeURL
 	}
 

@@ -44,6 +44,9 @@ func (e *DataExtractor) ExtractPost(parser *HTMLParser) (*Post, error) {
 		post.URL = baseURL
 	}
 
+	// 提取TID
+	post.TID = e.extractTID(parser)
+
 	// 提取主楼内容
 	mainPost, err := e.ExtractMainPost(parser)
 	if err != nil {
@@ -58,6 +61,9 @@ func (e *DataExtractor) ExtractPost(parser *HTMLParser) (*Post, error) {
 		return nil, fmt.Errorf("提取回复失败: %v", err)
 	}
 	post.Replies = replies
+
+	// 更新总楼层数
+	post.TotalFloors = 1 + len(post.Replies) // 主楼 + 回复数
 
 	return post, nil
 }
@@ -230,7 +236,7 @@ func (e *DataExtractor) extractPostEntry(table Element, floor, baseURL string) (
 	// 提取帖子内容
 	contentElement := table.Find(e.selectors.PostContent)
 	if contentElement.Length() > 0 {
-		entry.HTMLContent = contentElement.HTML()
+		entry.HTMLContent = e.cleanHTMLContent(contentElement.HTML())
 		entry.Content = e.cleanTextContent(contentElement.Text())
 	}
 
@@ -714,6 +720,14 @@ func (e *DataExtractor) cleanTextContent(text string) string {
 	return text
 }
 
+func (e *DataExtractor) cleanHTMLContent(str string) string {
+	str = strings.Trim(str, "\n")
+	str = strings.Trim(str, " ")
+	str = strings.Trim(str, "\n")
+
+	return str
+}
+
 // resolveURL 解析URL
 func (e *DataExtractor) resolveURL(relativeURL, baseURL string) string {
 	// 使用parser中的URL解析逻辑
@@ -721,4 +735,63 @@ func (e *DataExtractor) resolveURL(relativeURL, baseURL string) string {
 	parser := NewHTMLParser()
 	parser.SetBaseURL(baseURL)
 	return parser.ResolveURL(relativeURL)
+}
+
+// extractTID 提取帖子ID
+func (e *DataExtractor) extractTID(parser *HTMLParser) string {
+	// 尝试从标题中提取TID
+	titleElement := parser.FindElement("title")
+	if titleElement.Length() > 0 {
+		titleText := titleElement.Text()
+		// 从类似 "N2过了好耶～| 茶馆 - 南+ South Plus - powered by Pu!mdHd" 的标题中提取TID
+		// 或者从URL模式中提取
+		if strings.Contains(titleText, "read.php?tid-") {
+			parts := strings.Split(titleText, "read.php?tid-")
+			if len(parts) > 1 {
+				tidPart := parts[1]
+				// 提取数字部分
+				re := regexp.MustCompile(`(\d+)`)
+				matches := re.FindStringSubmatch(tidPart)
+				if len(matches) > 0 {
+					return matches[1]
+				}
+			}
+		}
+	}
+
+	// 尝试从URL中提取TID
+	baseURL := parser.GetBaseURL()
+	if baseURL != "" && strings.Contains(baseURL, "tid-") {
+		parts := strings.Split(baseURL, "tid-")
+		if len(parts) > 1 {
+			tidPart := parts[1]
+			// 提取数字部分
+			re := regexp.MustCompile(`(\d+)`)
+			matches := re.FindStringSubmatch(tidPart)
+			if len(matches) > 0 {
+				return matches[1]
+			}
+		}
+	}
+
+	// 尝试从页面中的链接中提取TID
+	tidElements := parser.FindElements("a[href*='tid-']")
+	for i := 0; i < tidElements.Length(); i++ {
+		element := tidElements.Eq(i)
+		if href, exists := element.Attr("href"); exists {
+			if strings.Contains(href, "tid-") {
+				parts := strings.Split(href, "tid-")
+				if len(parts) > 1 {
+					tidPart := parts[1]
+					re := regexp.MustCompile(`(\d+)`)
+					matches := re.FindStringSubmatch(tidPart)
+					if len(matches) > 0 {
+						return matches[1]
+					}
+				}
+			}
+		}
+	}
+
+	return ""
 }
