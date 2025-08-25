@@ -618,9 +618,3 @@ func (p *DefaultCurlParser) ExtractCookies(curlCmd *CurlCommand) ([]*CookieEntry
 
 	return cookies, nil
 }
-
-// ValidateCommand 验证 curl 命令
-func (p *DefaultCurlParser) ValidateCommand(curlCmd string) error {
-	_, err := p.ParseCommand(curlCmd)
-	return err
-}

@@ -59,9 +59,6 @@ func (e *DataExtractor) ExtractPost(parser *HTMLParser) (*Post, error) {
 	}
 	post.Replies = replies
 
-	// 计算总楼层数
-	post.TotalFloors = 1 + len(replies) // 主楼 + 回复数
-
 	return post, nil
 }
 
@@ -87,10 +84,10 @@ func (e *DataExtractor) ExtractPostFromMultiplePages(parsers []*HTMLParser) (*Po
 
 		// 追加回复
 		post.Replies = append(post.Replies, replies...)
-
-		// 更新总楼层数
-		post.TotalFloors = 1 + len(post.Replies) // 主楼 + 回复数
 	}
+
+	// 更新总楼层数
+	post.TotalFloors = 1 + len(post.Replies) // 主楼 + 回复数
 
 	return post, nil
 }
@@ -160,20 +157,31 @@ func (e *DataExtractor) extractPostEntry(table Element, floor, baseURL string) (
 	// 提取帖子ID
 	entry.PostID = e.extractPostID(table)
 
-	// 提取图片
-	images, err := e.ExtractImages(contentElement.First(), baseURL)
-	if err != nil {
-		fmt.Printf("提取图片失败: %v\n", err)
-	} else {
-		entry.Images = images
-	}
+	// 提取图片和附件
+	if contentElement.Length() > 0 {
+		// 提取图片
+		images, err := e.ExtractImages(contentElement.First(), baseURL)
+		if err != nil {
+			fmt.Printf("提取图片失败: %v\n", err)
+		} else {
+			entry.Images = images
+		}
 
-	// 提取附件
-	attachments, err := e.ExtractAttachments(table, baseURL)
-	if err != nil {
-		fmt.Printf("提取附件失败: %v\n", err)
+		// 提取附件
+		attachments, err := e.ExtractAttachments(table, baseURL)
+		if err != nil {
+			fmt.Printf("提取附件失败: %v\n", err)
+		} else {
+			entry.Attachments = attachments
+		}
 	} else {
-		entry.Attachments = attachments
+		// 如果没有内容元素，仍然尝试提取附件
+		attachments, err := e.ExtractAttachments(table, baseURL)
+		if err != nil {
+			fmt.Printf("提取附件失败: %v\n", err)
+		} else {
+			entry.Attachments = attachments
+		}
 	}
 
 	return entry, nil
@@ -490,43 +498,9 @@ func (e *DataExtractor) cleanTextContent(text string) string {
 
 // resolveURL 解析URL
 func (e *DataExtractor) resolveURL(relativeURL, baseURL string) string {
-	if relativeURL == "" {
-		return ""
-	}
-
-	// 如果已经是绝对URL，直接返回
-	if strings.HasPrefix(relativeURL, "http://") || strings.HasPrefix(relativeURL, "https://") {
-		return relativeURL
-	}
-
-	if baseURL == "" {
-		return relativeURL
-	}
-
-	// 处理协议相对URL
-	if strings.HasPrefix(relativeURL, "//") {
-		if strings.HasPrefix(baseURL, "https:") {
-			return "https:" + relativeURL
-		}
-		return "http:" + relativeURL
-	}
-
-	// 处理绝对路径
-	if strings.HasPrefix(relativeURL, "/") {
-		// 提取baseURL的协议和域名部分
-		if idx := strings.Index(baseURL, "://"); idx != -1 {
-			protocol := baseURL[:idx+3]
-			remaining := baseURL[idx+3:]
-			if idx2 := strings.Index(remaining, "/"); idx2 != -1 {
-				domain := remaining[:idx2]
-				return protocol + domain + relativeURL
-			} else {
-				return protocol + remaining + relativeURL
-			}
-		}
-	}
-
-	// 处理相对路径
-	baseURL = strings.TrimRight(baseURL, "/")
-	return baseURL + "/" + relativeURL
+	// 使用parser中的URL解析逻辑
+	// 创建一个临时parser来处理URL解析
+	parser := NewHTMLParser()
+	parser.SetBaseURL(baseURL)
+	return parser.ResolveURL(relativeURL)
 }

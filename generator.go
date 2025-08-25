@@ -469,24 +469,3 @@ func (g *DefaultMarkdownGenerator) formatFileSize(size int64) string {
 		return fmt.Sprintf("%d B", size)
 	}
 }
-
-// SetImageStyle 设置图片样式
-func (g *DefaultMarkdownGenerator) SetImageStyle(style string) {
-	g.options.ImageStyle = style
-}
-
-// SetIncludeAuthorInfo 设置是否包含作者信息
-func (g *DefaultMarkdownGenerator) SetIncludeAuthorInfo(include bool) {
-	g.options.IncludeAuthorInfo = include
-}
-
-// SetIncludeImages 设置是否包含图片
-func (g *DefaultMarkdownGenerator) SetIncludeImages(include bool) {
-	g.options.IncludeImages = include
-}
-
-// SetTableOfContents 设置是否生成目录
-func (g *DefaultMarkdownGenerator) SetTableOfContents(include bool) {
-	g.options.TableOfContents = include
-	g.options.IncludeTOC = include
-}

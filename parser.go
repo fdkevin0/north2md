@@ -129,11 +129,6 @@ func (p *HTMLParser) SetBaseURL(baseURL string) {
 	p.baseURL = baseURL
 }
 
-// GetDocument 获取goquery文档对象
-func (p *HTMLParser) GetDocument() *goquery.Document {
-	return p.doc
-}
-
 // ResolveURL 解析相对URL为绝对URL
 func (p *HTMLParser) ResolveURL(relativeURL string) string {
 	if relativeURL == "" {

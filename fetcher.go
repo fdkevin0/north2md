@@ -5,7 +5,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -48,16 +47,23 @@ func (f *HTTPFetcher) FetchPost(tid string) (string, error) {
 	}
 
 	// 构建完整的URL
-	postURL := f.buildPostURL(tid)
+	postURL := f.buildPostURL(tid, 1) // 第一页
 
 	return f.FetchURL(postURL)
 }
 
 // buildPostURL 构建帖子URL
-func (f *HTTPFetcher) buildPostURL(tid string) string {
+func (f *HTTPFetcher) buildPostURL(tid string, page int) string {
 	// 确保baseURL以/结尾
 	baseURL := strings.TrimRight(f.baseURL, "/")
-	return fmt.Sprintf("%s/read.php?tid-%s.html", baseURL, tid)
+
+	// 如果是第一页，使用原始URL格式
+	if page <= 1 {
+		return fmt.Sprintf("%s/read.php?tid-%s.html", baseURL, tid)
+	}
+
+	// 对于其他页，添加页码参数
+	return fmt.Sprintf("%s/read.php?tid-%s-page-%d.html", baseURL, tid, page)
 }
 
 // FetchPostWithPage 抓取指定TID和页码的帖子内容
@@ -69,23 +75,9 @@ func (f *HTTPFetcher) FetchPostWithPage(tid string, page int) (string, error) {
 	log.Printf("正在抓取帖子：%s, page: %d", tid, page)
 
 	// 构建完整的URL，包含页码参数
-	postURL := f.buildPostURLWithPage(tid, page)
+	postURL := f.buildPostURL(tid, page)
 
 	return f.FetchURL(postURL)
-}
-
-// buildPostURLWithPage 构建带页码的帖子URL
-func (f *HTTPFetcher) buildPostURLWithPage(tid string, page int) string {
-	// 确保baseURL以/结尾
-	baseURL := strings.TrimRight(f.baseURL, "/")
-
-	// 如果是第一页，使用原始URL格式
-	if page <= 1 {
-		return fmt.Sprintf("%s/read.php?tid-%s.html", baseURL, tid)
-	}
-
-	// 对于其他页，添加页码参数
-	return fmt.Sprintf("%s/read.php?tid-%s-page-%d.html", baseURL, tid, page)
 }
 
 // FetchURL 抓取指定URL的内容
@@ -208,23 +200,6 @@ func (f *HTTPFetcher) doRequest(targetURL string) (*http.Response, error) {
 	return f.client.Do(req)
 }
 
-// SetHeaders 设置自定义请求头
-func (f *HTTPFetcher) SetHeaders(headers map[string]string) {
-	if f.config.CustomHeaders == nil {
-		f.config.CustomHeaders = make(map[string]string)
-	}
-
-	for key, value := range headers {
-		f.config.CustomHeaders[key] = value
-	}
-}
-
-// SetTimeout 设置请求超时时间
-func (f *HTTPFetcher) SetTimeout(timeout time.Duration) {
-	f.config.Timeout = timeout
-	f.client.Timeout = timeout
-}
-
 // LoadCookies 从文件加载Cookie
 func (f *HTTPFetcher) LoadCookies(cookieFile string) error {
 	if !f.config.EnableCookie {
@@ -241,68 +216,6 @@ func (f *HTTPFetcher) SaveCookies(cookieFile string) error {
 	}
 
 	return f.cookieManager.SaveToFile(cookieFile)
-}
-
-// SetCookie 设置Cookie
-func (f *HTTPFetcher) SetCookie(cookie *CookieEntry) {
-	if f.config.EnableCookie {
-		f.cookieManager.AddCookie(cookie)
-	}
-}
-
-// GetCookies 获取指定域名的Cookie
-func (f *HTTPFetcher) GetCookies(domain string) []*CookieEntry {
-	if !f.config.EnableCookie {
-		return nil
-	}
-
-	// 构建一个示例URL用于Cookie匹配
-	testURL := fmt.Sprintf("https://%s/", domain)
-	return f.cookieManager.GetCookiesForURL(testURL)
-}
-
-// ClearCookies 清除所有Cookie
-func (f *HTTPFetcher) ClearCookies() {
-	if f.config.EnableCookie {
-		f.cookieManager.ClearCookies()
-	}
-}
-
-// SetCookieFromString 从字符串设置Cookie
-func (f *HTTPFetcher) SetCookieFromString(cookieStr, domain string) error {
-	if !f.config.EnableCookie {
-		return nil
-	}
-
-	return f.cookieManager.SetCookieFromString(cookieStr, domain, "/")
-}
-
-// GetCookieString 获取Cookie字符串
-func (f *HTTPFetcher) GetCookieString(domain string) string {
-	if !f.config.EnableCookie {
-		return ""
-	}
-
-	return f.cookieManager.GetCookieString(domain)
-}
-
-// ValidateURL 验证URL是否有效
-func (f *HTTPFetcher) ValidateURL(urlStr string) error {
-	_, err := url.Parse(urlStr)
-	if err != nil {
-		return fmt.Errorf("无效的URL: %v", err)
-	}
-	return nil
-}
-
-// GetBaseURL 获取基础URL
-func (f *HTTPFetcher) GetBaseURL() string {
-	return f.baseURL
-}
-
-// SetBaseURL 设置基础URL
-func (f *HTTPFetcher) SetBaseURL(baseURL string) {
-	f.baseURL = strings.TrimRight(baseURL, "/")
 }
 
 // OnlinePostFetcher 在线帖子获取器
@@ -343,21 +256,6 @@ func (f *OnlinePostFetcher) FetchPost(tid string) (*Post, error) {
 		totalPages = 1
 	}
 
-	// 如果只有一页，直接返回
-	if totalPages == 1 {
-		// 提取帖子数据
-		post, err := f.dataExtractor.ExtractPost(f.htmlParser)
-		if err != nil {
-			return nil, fmt.Errorf("提取帖子数据失败: %v", err)
-		}
-
-		// 设置TID
-		post.TID = tid
-
-		return post, nil
-	}
-
-	// 处理多页情况
 	// 收集所有页面的解析器
 	var parsers []*HTMLParser
 
@@ -383,6 +281,7 @@ func (f *OnlinePostFetcher) FetchPost(tid string) (*Post, error) {
 	}
 
 	// 从所有页面提取数据
+	// 使用统一的方法处理单页和多页情况
 	post, err := f.dataExtractor.ExtractPostFromMultiplePages(parsers)
 	if err != nil {
 		return nil, fmt.Errorf("从多页提取帖子数据失败: %v", err)
