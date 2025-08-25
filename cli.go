@@ -38,7 +38,7 @@ var (
 
 // rootCmd 根命令
 var rootCmd = &cobra.Command{
-	Use:   "north2md",
+	Use:   "north2md [TID]",
 	Short: "HTML数据提取器 - 从南+ South Plus论坛提取帖子内容并转换为Markdown",
 	Long: `HTML数据提取器是一个用Go语言开发的工具，专门用于从"南+ South Plus"论坛抓取帖子内容并转换为Markdown格式。
 
@@ -50,20 +50,22 @@ var rootCmd = &cobra.Command{
 - Cookie管理和用户身份认证
 - 并发下载优化`,
 	Example: `  # 通过TID抓取在线帖子
+  north2md 2636739 --output=post.md
   north2md --tid=2636739 --output=post.md
 
   # 使用Cookie文件登录
-  north2md --tid=2636739 --cookie-file=./cookies.toml --output=post.md
+  north2md 2636739 --cookie-file=./cookies.toml --output=post.md
 
   # 解析本地HTML文件
   north2md --input=post.html --output=post.md
 
   # 指定缓存目录
-  north2md --tid=2636739 --cache-dir=./cache --output=post.md
+  north2md 2636739 --cache-dir=./cache --output=post.md
 
   # 禁用附件下载
-  north2md --tid=2636739 --no-cache --output=post.md`,
+  north2md 2636739 --no-cache --output=post.md`,
 	RunE: runExtractor,
+	Args: cobra.MaximumNArgs(1), // 允许最多一个位置参数
 }
 
 // extractCmd 提取命令
@@ -114,6 +116,7 @@ func initCommand() {
 
 	// 根命令参数
 	rootCmd.PersistentFlags().StringVar(&flagTID, "tid", "", "帖子ID (用于在线抓取)")
+	rootCmd.PersistentFlags().StringVar(&flagInputFile, "input", "", "输入HTML文件路径")
 	rootCmd.PersistentFlags().StringVar(&flagOutputFile, "output", "post.md", "输出Markdown文件路径")
 	rootCmd.PersistentFlags().StringVar(&flagCacheDir, "cache-dir", "./cache", "附件缓存目录")
 	rootCmd.PersistentFlags().StringVar(&flagBaseURL, "base-url", "https://north-plus.net/", "论坛基础URL")
@@ -152,6 +155,17 @@ func Execute() error {
 
 // initConfig 初始化配置
 func initConfig() error {
+	// 如果提供了位置参数，将其作为TID
+	if len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-") {
+		// 检查第一个参数是否是命令
+		firstArg := os.Args[1]
+		isCommand := firstArg == "extract" || firstArg == "download" || firstArg == "cookie"
+
+		if !isCommand && config.TID == "" {
+			config.TID = firstArg
+		}
+	}
+
 	// 更新配置参数
 	if flagTID != "" {
 		config.TID = flagTID
@@ -209,6 +223,11 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("初始化配置失败: %v", err)
 	}
 
+	// 如果提供了位置参数，确保TID被正确设置
+	if len(args) > 0 && config.TID == "" {
+		config.TID = args[0]
+	}
+
 	// 创建HTTP客户端
 	httpClient := NewHTTPFetcher(&config.HTTPOpts, config.BaseURL)
 
@@ -232,8 +251,22 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("抓取帖子失败: %v", err)
 		}
+	} else if flagInputFile != "" {
+		// 从本地文件加载
+		if err := htmlParser.LoadFromFile(flagInputFile); err != nil {
+			return fmt.Errorf("加载HTML文件失败: %v", err)
+		}
+
+		// 创建数据提取器
+		extractor := NewDataExtractor(&config.Selectors)
+
+		// 提取帖子数据
+		post, err = extractor.ExtractPost(htmlParser)
+		if err != nil {
+			return fmt.Errorf("提取帖子数据失败: %v", err)
+		}
 	} else {
-		return fmt.Errorf("必须指定 --tid 或 --input 参数")
+		return fmt.Errorf("必须指定帖子ID或 --input 参数")
 	}
 
 	// 创建输出目录
@@ -313,12 +346,12 @@ func runDownloader(cmd *cobra.Command, args []string) error {
 func validateFlags() error {
 	// 必须指定TID或输入文件
 	if flagTID == "" && flagInputFile == "" {
-		return fmt.Errorf("必须指定 --tid 或 --input 参数")
+		return fmt.Errorf("必须指定帖子ID或 --input 参数")
 	}
 
 	// TID和输入文件不能同时指定
 	if flagTID != "" && flagInputFile != "" {
-		return fmt.Errorf("--tid 和 --input 参数不能同时指定")
+		return fmt.Errorf("帖子ID 和 --input 参数不能同时指定")
 	}
 
 	// 验证输入文件是否存在
@@ -333,6 +366,17 @@ func validateFlags() error {
 
 // applyFlags 应用命令行参数到配置
 func applyFlags() {
+	// 如果提供了位置参数，优先使用位置参数
+	if len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-") {
+		// 检查第一个参数是否是命令
+		firstArg := os.Args[1]
+		isCommand := firstArg == "extract" || firstArg == "download" || firstArg == "cookie"
+
+		if !isCommand && flagTID == "" {
+			flagTID = firstArg
+		}
+	}
+
 	config.TID = flagTID
 	config.OutputFile = flagOutputFile
 	config.CacheDir = flagCacheDir

@@ -94,14 +94,78 @@ func (e *DataExtractor) ExtractPostFromMultiplePages(parsers []*HTMLParser) (*Po
 
 // ExtractMainPost 提取主楼内容
 func (e *DataExtractor) ExtractMainPost(parser *HTMLParser) (*PostEntry, error) {
-	// 查找第一个帖子表格
-	postTables := parser.FindElements(e.selectors.PostTable)
-	if postTables.Length() == 0 {
-		return nil, fmt.Errorf("未找到帖子内容")
+	// 查找主楼表格
+	postTable := parser.FindElement(e.selectors.PostTable)
+	if postTable.Length() == 0 {
+		// 输出调试信息
+		fmt.Printf("调试信息:\n")
+		fmt.Printf("  帖子表格选择器: %s\n", e.selectors.PostTable)
+
+		// 尝试查找其他可能的表格选择器
+		alternativeSelectors := []string{
+			"table",
+			".post_table",
+			".post-table",
+			"div.post",
+			".threadpost",
+		}
+
+		for _, selector := range alternativeSelectors {
+			table := parser.FindElement(selector)
+			fmt.Printf("  尝试选择器 '%s': 找到 %d 个元素\n", selector, table.Length())
+			if table.Length() > 0 {
+				fmt.Printf("    第一个元素内容预览: %.100s...\n", table.HTML())
+			}
+		}
+
+		return nil, fmt.Errorf("未找到帖子表格 (选择器: %s)", e.selectors.PostTable)
 	}
 
-	firstTable := postTables.First()
-	return e.extractPostEntry(firstTable, "GF", parser.GetBaseURL())
+	// 查找主楼内容
+	postContent := postTable.Find(e.selectors.PostContent)
+	if postContent.Length() == 0 {
+		// 输出调试信息
+		fmt.Printf("调试信息:\n")
+		fmt.Printf("  帖子表格元素数量: %d\n", postTable.Length())
+		fmt.Printf("  帖子内容选择器: %s\n", e.selectors.PostContent)
+
+		// 尝试查找其他可能的内容选择器
+		alternativeSelectors := []string{
+			".f14",
+			"div[id^='read_']",
+			".postcontent",
+			".content",
+			".postcontent",
+			".message",
+			".post-body",
+		}
+
+		// 遍历表格内的所有元素，查找可能的内容
+		fmt.Printf("  遍历表格内的元素:\n")
+		postTable.Find("*").Each(func(i int, el Element) {
+			// 限制输出数量以避免过多信息
+			if i < 10 {
+				tagName := el.HTML() // 简化处理，实际应该获取标签名
+				text := el.Text()
+				if len(text) > 50 {
+					text = text[:50] + "..."
+				}
+				fmt.Printf("    元素 %d: %s (文本: %s)\n", i, tagName[:min(50, len(tagName))], text)
+			}
+		})
+
+		for _, selector := range alternativeSelectors {
+			content := postTable.Find(selector)
+			fmt.Printf("  尝试选择器 '%s': 找到 %d 个元素\n", selector, content.Length())
+			if content.Length() > 0 {
+				fmt.Printf("    第一个元素内容预览: %.100s...\n", content.First().HTML())
+			}
+		}
+
+		return nil, fmt.Errorf("未找到帖子内容 (选择器: %s)", e.selectors.PostContent)
+	}
+
+	return e.extractPostEntry(postTable, "GF", parser.GetBaseURL())
 }
 
 // ExtractReplies 提取所有回复

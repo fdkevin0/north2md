@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -60,6 +61,17 @@ func NewHTMLParser() *HTMLParser {
 // LoadFromString 从字符串加载HTML
 func (p *HTMLParser) LoadFromString(html string) error {
 	return p.LoadFromReader(strings.NewReader(html))
+}
+
+// LoadFromFile 从文件加载HTML
+func (p *HTMLParser) LoadFromFile(filename string) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return fmt.Errorf("打开文件失败: %v", err)
+	}
+	defer file.Close()
+
+	return p.LoadFromReader(file)
 }
 
 func (p *HTMLParser) LoadFromReader(reader io.Reader) error {
