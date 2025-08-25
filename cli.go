@@ -26,6 +26,13 @@ var (
 	flagMaxConcurrent int
 	flagVerbose      bool
 	flagHeaders      []string
+	
+	// Cookie 相关参数
+	flagCurlCommand  string
+	flagCurlFile     string
+	flagTestURL      string
+	flagOverwrite    bool
+	flagTestMode     bool
 )
 
 // rootCmd 根命令
@@ -89,6 +96,64 @@ var configInitCmd = &cobra.Command{
 	RunE:  runConfigInit,
 }
 
+// cookieCmd cookie管理命令
+var cookieCmd = &cobra.Command{
+	Use:   "cookie",
+	Short: "Cookie管理工具",
+	Long:  `管理和操作Cookie数据`,
+}
+
+// cookieImportCmd cookie导入命令
+var cookieImportCmd = &cobra.Command{
+	Use:   "import",
+	Short: "从 curl 命令导入 cookie",
+	Long:  `从 curl 命令或包含 curl 命令的文件中解析并导入 cookie`,
+	Example: `  # 从 curl 命令导入 cookie
+  north2md cookie import --curl="curl 'https://example.com' -b 'session=abc123'"
+
+  # 从文件导入 curl 命令
+  north2md cookie import --file=./curl.txt
+
+  # 覆盖已存在的 cookie
+  north2md cookie import --file=./curl.txt --overwrite
+
+  # 从 curl 命令导入并立即测试
+  north2md cookie import --curl="curl '...' -b '...'" --test --test-url="https://north-plus.net/read.php?tid-2625015.html"`,
+	RunE:  runCookieImport,
+}
+
+// cookieListCmd cookie列表命令
+var cookieListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "列出所有 cookie",
+	Long:  `显示当前存储的所有 cookie 信息`,
+	RunE:  runCookieList,
+}
+
+// cookieTestCmd cookie测试命令
+var cookieTestCmd = &cobra.Command{
+	Use:   "test",
+	Short: "测试 cookie 访问性",
+	Long:  `测试 cookie 是否能够绕过登录墙并访问指定页面`,
+	Example: `  # 测试 cookie 访问性
+  north2md cookie test --url="https://north-plus.net/read.php?tid-2625015.html"
+
+  # 使用指定的 cookie 文件测试
+  north2md cookie test --url="https://north-plus.net/read.php?tid-2625015.html" --cookie-file=./cookies.json
+
+  # 详细模式显示测试结果
+  north2md cookie test --url="https://north-plus.net/read.php?tid-2625015.html" --verbose`,
+	RunE:  runCookieTest,
+}
+
+// cookieValidateCmd cookie验证命令
+var cookieValidateCmd = &cobra.Command{
+	Use:   "validate",
+	Short: "验证 cookie 有效性",
+	Long:  `验证当前 cookie 的有效性和权限级别`,
+	RunE:  runCookieValidate,
+}
+
 func init() {
 	// 初始化默认配置
 	config = NewDefaultConfig()
@@ -111,7 +176,26 @@ func init() {
 	rootCmd.AddCommand(extractCmd)
 	rootCmd.AddCommand(downloadCmd)
 	rootCmd.AddCommand(configCmd)
+	rootCmd.AddCommand(cookieCmd)
 	configCmd.AddCommand(configInitCmd)
+	
+	// 添加 cookie 子命令
+	cookieCmd.AddCommand(cookieImportCmd)
+	cookieCmd.AddCommand(cookieListCmd)
+	cookieCmd.AddCommand(cookieTestCmd)
+	cookieCmd.AddCommand(cookieValidateCmd)
+	
+	// cookie import 命令参数
+	cookieImportCmd.Flags().StringVar(&flagCurlCommand, "curl", "", "curl 命令字符串")
+	cookieImportCmd.Flags().StringVar(&flagCurlFile, "file", "", "包含 curl 命令的文件路径")
+	cookieImportCmd.Flags().BoolVar(&flagOverwrite, "overwrite", false, "是否覆盖已存在的 cookie")
+	cookieImportCmd.Flags().BoolVar(&flagTestMode, "test", false, "导入后立即测试 cookie 有效性")
+	cookieImportCmd.Flags().StringVar(&flagTestURL, "test-url", "", "测试 URL（仅在 --test 模式下有效）")
+	cookieImportCmd.MarkFlagsMutuallyExclusive("curl", "file")
+	
+	// cookie test 命令参数
+	cookieTestCmd.Flags().StringVar(&flagTestURL, "url", "", "测试 URL")
+	cookieTestCmd.MarkFlagRequired("url")
 
 	// 标记必需参数
 	rootCmd.MarkFlagsMutuallyExclusive("tid", "input")
@@ -430,4 +514,219 @@ func formatFileSize(size int64) string {
 func (c *Config) ToJSON() (string, error) {
 	// 这里需要实现JSON序列化，暂时返回空
 	return "{}", nil
+}
+
+// runCookieImport 运行 cookie 导入命令
+func runCookieImport(cmd *cobra.Command, args []string) error {
+	// 验证参数
+	if flagCurlCommand == "" && flagCurlFile == "" {
+		return fmt.Errorf("必须指定 --curl 或 --file 参数")
+	}
+
+	// 创建 curl 解析器
+	options := &CurlImportOptions{
+		OverwriteExisting: flagOverwrite,
+		AutoInferDomain:   true,
+		AutoInferPath:     true,
+		DefaultExpiry:     24 * 7, // 7天
+	}
+	parser := NewCurlParser(options)
+
+	// 解析 curl 命令
+	var commands []*CurlCommand
+	var err error
+
+	if flagCurlCommand != "" {
+		// 从命令行解析
+		curlCmd, err := parser.ParseCommand(flagCurlCommand)
+		if err != nil {
+			return fmt.Errorf("解析 curl 命令失败: %v", err)
+		}
+		commands = []*CurlCommand{curlCmd}
+	} else {
+		// 从文件解析
+		commands, err = parser.ParseFromFile(flagCurlFile)
+		if err != nil {
+			return fmt.Errorf("从文件解析 curl 命令失败: %v", err)
+		}
+	}
+
+	if len(commands) == 0 {
+		return fmt.Errorf("未找到有效的 curl 命令")
+	}
+
+	// 创建 Cookie 管理器
+	cookieManager := NewCookieManager()
+	if err := cookieManager.LoadFromFile(flagCookieFile); err != nil {
+		fmt.Printf("警告: 加载 Cookie 文件失败: %v\n", err)
+	}
+
+	// 提取和导入 cookies
+	totalCookies := 0
+	for i, curlCmd := range commands {
+		fmt.Printf("正在处理第 %d 个 curl 命令: %s\n", i+1, curlCmd.URL)
+		
+		cookies, err := parser.ExtractCookies(curlCmd)
+		if err != nil {
+			fmt.Printf("警告: 提取 cookies 失败: %v\n", err)
+			continue
+		}
+
+		for _, cookie := range cookies {
+			cookieManager.AddCookie(cookie)
+			totalCookies++
+			if flagVerbose {
+				fmt.Printf("  + 添加 Cookie: %s=%s (域名: %s)\n", 
+					cookie.Name, cookie.Value[:min(20, len(cookie.Value))], cookie.Domain)
+			}
+		}
+	}
+
+	// 保存 cookies
+	if err := cookieManager.SaveToFile(flagCookieFile); err != nil {
+		return fmt.Errorf("保存 Cookie 文件失败: %v", err)
+	}
+
+	fmt.Printf("✓ 成功导入 %d 个 cookies 到 %s\n", totalCookies, flagCookieFile)
+
+	// 如果启用测试模式
+	if flagTestMode {
+		if flagTestURL == "" {
+			// 使用第一个 curl 命令的 URL 作为测试 URL
+			flagTestURL = commands[0].URL
+		}
+		return runCookieTestInternal(flagTestURL, cookieManager)
+	}
+
+	return nil
+}
+
+// runCookieList 运行 cookie 列表命令
+func runCookieList(cmd *cobra.Command, args []string) error {
+	cookieManager := NewCookieManager()
+	if err := cookieManager.LoadFromFile(flagCookieFile); err != nil {
+		return fmt.Errorf("加载 Cookie 文件失败: %v", err)
+	}
+
+	cookies := cookieManager.GetAllCookies()
+	if len(cookies) == 0 {
+		fmt.Println("没有找到任何 cookies")
+		return nil
+	}
+
+	fmt.Printf("共找到 %d 个 cookies:\n\n", len(cookies))
+
+	for i, cookie := range cookies {
+		fmt.Printf("%d. %s\n", i+1, cookie.Name)
+		fmt.Printf("   值: %s\n", truncateString(cookie.Value, 50))
+		fmt.Printf("   域名: %s\n", cookie.Domain)
+		fmt.Printf("   路径: %s\n", cookie.Path)
+		if !cookie.Expires.IsZero() {
+			fmt.Printf("   过期时间: %s\n", cookie.Expires.Format("2006-01-02 15:04:05"))
+		}
+		if cookie.Source != "" {
+			fmt.Printf("   来源: %s\n", cookie.Source)
+		}
+		if !cookie.ImportedAt.IsZero() {
+			fmt.Printf("   导入时间: %s\n", cookie.ImportedAt.Format("2006-01-02 15:04:05"))
+		}
+		fmt.Println()
+	}
+
+	return nil
+}
+
+// runCookieTest 运行 cookie 测试命令
+func runCookieTest(cmd *cobra.Command, args []string) error {
+	cookieManager := NewCookieManager()
+	if err := cookieManager.LoadFromFile(flagCookieFile); err != nil {
+		return fmt.Errorf("加载 Cookie 文件失败: %v", err)
+	}
+
+	return runCookieTestInternal(flagTestURL, cookieManager)
+}
+
+// runCookieTestInternal 内部 cookie 测试函数
+func runCookieTestInternal(testURL string, cookieManager *DefaultCookieManager) error {
+	// 创建 Cookie 验证器
+	validator := NewCookieValidator(nil)
+
+	// 获取适用的 cookies
+	cookies := cookieManager.GetCookiesForURL(testURL)
+
+	fmt.Printf("正在测试 URL: %s\n", testURL)
+	fmt.Printf("使用 %d 个 cookies\n\n", len(cookies))
+
+	// 执行验证
+	result, err := validator.ValidateCookies(testURL, cookies)
+	if err != nil {
+		return fmt.Errorf("验证 cookies 失败: %v", err)
+	}
+
+	// 显示结果
+	fmt.Println("=== 测试结果 ===")
+	fmt.Printf("Cookie 有效性: %s\n", getBoolDisplay(result.IsValid))
+	fmt.Printf("HTTP 状态码: %d\n", result.StatusCode)
+	fmt.Printf("登录状态: %s\n", result.LoginStatus.String())
+	fmt.Printf("响应时间: %v\n", result.ResponseTime)
+	fmt.Printf("内容长度: %d 字节\n", result.ContentLength)
+
+	if result.RedirectURL != "" {
+		fmt.Printf("重定向 URL: %s\n", result.RedirectURL)
+	}
+
+	if result.HasLoginWall {
+		fmt.Printf("登录墙: 是\n")
+	} else {
+		fmt.Printf("登录墙: 否\n")
+	}
+
+	if result.ErrorMessage != "" {
+		fmt.Printf("错误信息: %s\n", result.ErrorMessage)
+	}
+
+	fmt.Println("===============")
+
+	// 显示建议
+	if result.IsValid {
+		fmt.Println("✓ Cookies 状态良好，可以正常使用")
+	} else {
+		if result.HasLoginWall {
+			fmt.Println("⚠ 检测到登录墙，需要重新获取 cookies")
+		} else {
+			fmt.Println("⚠ Cookies 可能已过期或无效，请检查")
+		}
+	}
+
+	return nil
+}
+
+// runCookieValidate 运行 cookie 验证命令
+func runCookieValidate(cmd *cobra.Command, args []string) error {
+	// TODO: 实现 cookie 验证逻辑
+	fmt.Println("✓ Cookie 验证功能尚未实现")
+	return nil
+}
+
+// 工具函数
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
+func getBoolDisplay(b bool) string {
+	if b {
+		return "✓ 是"
+	}
+	return "✗ 否"
 }

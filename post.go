@@ -70,6 +70,11 @@ type CookieEntry struct {
 	Secure   bool      `json:"secure"`    // 是否只在HTTPS下传输
 	HttpOnly bool      `json:"http_only"` // 是否仅HTTP可访问
 	SameSite string    `json:"same_site"` // SameSite属性
+	
+	// 新增字段
+	Source     string    `json:"source"`      // Cookie来源 (curl, browser, manual)
+	ImportedAt time.Time `json:"imported_at"` // 导入时间
+	RawValue   string    `json:"raw_value"`   // 原始Cookie值 (用于调试)
 }
 
 // CookieJar Cookie管理器
