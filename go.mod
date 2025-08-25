@@ -3,6 +3,7 @@ module github.com/fdkevin0/north2md
 go 1.21
 
 require (
+	github.com/BurntSushi/toml v1.5.0
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/spf13/cobra v1.8.0
 )

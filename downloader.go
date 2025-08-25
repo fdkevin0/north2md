@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/md5"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/BurntSushi/toml"
 )
 
 // AttachmentDownloader 附件下载器接口
@@ -32,19 +33,19 @@ type DefaultAttachmentDownloader struct {
 
 // DownloadMetadata 下载元数据
 type DownloadMetadata struct {
-	TID       string                  `json:"tid"`
-	Downloads map[string]DownloadInfo `json:"downloads"`
-	UpdatedAt time.Time               `json:"updated_at"`
+	TID       string                  `toml:"tid"`
+	Downloads map[string]DownloadInfo `toml:"downloads"`
+	UpdatedAt time.Time               `toml:"updated_at"`
 }
 
 // DownloadInfo 下载信息
 type DownloadInfo struct {
-	OriginalURL string    `json:"original_url"`
-	LocalPath   string    `json:"local_path"`
-	FileSize    int64     `json:"file_size"`
-	Downloaded  bool      `json:"downloaded"`
-	DownloadAt  time.Time `json:"download_at"`
-	MD5Hash     string    `json:"md5_hash"`
+	OriginalURL string    `toml:"original_url"`
+	LocalPath   string    `toml:"local_path"`
+	FileSize    int64     `toml:"file_size"`
+	Downloaded  bool      `toml:"downloaded"`
+	DownloadAt  time.Time `toml:"download_at"`
+	MD5Hash     string    `toml:"md5_hash"`
 }
 
 // NewAttachmentDownloader 创建新的附件下载器
@@ -621,7 +622,7 @@ func (d *DefaultAttachmentDownloader) ensureCacheDir(cacheDir string) error {
 
 // loadMetadata 加载下载元数据
 func (d *DefaultAttachmentDownloader) loadMetadata(cacheDir string) *DownloadMetadata {
-	metadataPath := filepath.Join(cacheDir, "metadata.json")
+	metadataPath := filepath.Join(cacheDir, "metadata.toml")
 
 	metadata := &DownloadMetadata{
 		Downloads: make(map[string]DownloadInfo),
@@ -629,7 +630,7 @@ func (d *DefaultAttachmentDownloader) loadMetadata(cacheDir string) *DownloadMet
 	}
 
 	if data, err := os.ReadFile(metadataPath); err == nil {
-		json.Unmarshal(data, metadata)
+		toml.Unmarshal(data, metadata)
 	}
 
 	return metadata
@@ -637,10 +638,10 @@ func (d *DefaultAttachmentDownloader) loadMetadata(cacheDir string) *DownloadMet
 
 // saveMetadata 保存下载元数据
 func (d *DefaultAttachmentDownloader) saveMetadata(metadata *DownloadMetadata, cacheDir string) error {
-	metadataPath := filepath.Join(cacheDir, "metadata.json")
+	metadataPath := filepath.Join(cacheDir, "metadata.toml")
 	metadata.UpdatedAt = time.Now()
 
-	data, err := json.MarshalIndent(metadata, "", "  ")
+	data, err := toml.Marshal(metadata)
 	if err != nil {
 		return err
 	}

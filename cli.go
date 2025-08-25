@@ -53,7 +53,7 @@ var rootCmd = &cobra.Command{
   north2md --tid=2636739 --output=post.md
 
   # 使用Cookie文件登录
-  north2md --tid=2636739 --cookie-file=./cookies.json --output=post.md
+  north2md --tid=2636739 --cookie-file=./cookies.toml --output=post.md
 
   # 解析本地HTML文件
   north2md --input=post.html --output=post.md
@@ -82,21 +82,6 @@ var downloadCmd = &cobra.Command{
 	RunE:  runDownloader,
 }
 
-// configCmd 配置命令
-var configCmd = &cobra.Command{
-	Use:   "config",
-	Short: "管理配置文件",
-	Long:  `创建、查看或修改配置文件`,
-}
-
-// configInitCmd 初始化配置命令
-var configInitCmd = &cobra.Command{
-	Use:   "init",
-	Short: "初始化默认配置文件",
-	Long:  `创建默认的配置文件到当前目录`,
-	RunE:  runConfigInit,
-}
-
 // cookieCmd cookie管理命令
 var cookieCmd = &cobra.Command{
 	Use:   "cookie",
@@ -123,38 +108,6 @@ var cookieImportCmd = &cobra.Command{
 	RunE: runCookieImport,
 }
 
-// cookieListCmd cookie列表命令
-var cookieListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "列出所有 cookie",
-	Long:  `显示当前存储的所有 cookie 信息`,
-	RunE:  runCookieList,
-}
-
-// cookieTestCmd cookie测试命令
-var cookieTestCmd = &cobra.Command{
-	Use:   "test",
-	Short: "测试 cookie 访问性",
-	Long:  `测试 cookie 是否能够绕过登录墙并访问指定页面`,
-	Example: `  # 测试 cookie 访问性
-  north2md cookie test --url="https://north-plus.net/read.php?tid-2625015.html"
-
-  # 使用指定的 cookie 文件测试
-  north2md cookie test --url="https://north-plus.net/read.php?tid-2625015.html" --cookie-file=./cookies.json
-
-  # 详细模式显示测试结果
-  north2md cookie test --url="https://north-plus.net/read.php?tid-2625015.html" --verbose`,
-	RunE: runCookieTest,
-}
-
-// cookieValidateCmd cookie验证命令
-var cookieValidateCmd = &cobra.Command{
-	Use:   "validate",
-	Short: "验证 cookie 有效性",
-	Long:  `验证当前 cookie 的有效性和权限级别`,
-	RunE:  runCookieValidate,
-}
-
 func init() {
 	// 初始化默认配置
 	config = NewDefaultConfig()
@@ -165,7 +118,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&flagOutputFile, "output", "post.md", "输出Markdown文件路径")
 	rootCmd.PersistentFlags().StringVar(&flagCacheDir, "cache-dir", "./cache", "附件缓存目录")
 	rootCmd.PersistentFlags().StringVar(&flagBaseURL, "base-url", "https://north-plus.net/", "论坛基础URL")
-	rootCmd.PersistentFlags().StringVar(&flagCookieFile, "cookie-file", "./cookies.json", "Cookie文件路径")
+	rootCmd.PersistentFlags().StringVar(&flagCookieFile, "cookie-file", "./cookies.toml", "Cookie文件路径")
 	rootCmd.PersistentFlags().BoolVar(&flagNoCache, "no-cache", false, "禁用附件缓存")
 	rootCmd.PersistentFlags().BoolVar(&flagNoCookie, "no-cookie", false, "禁用Cookie功能")
 	rootCmd.PersistentFlags().IntVar(&flagTimeout, "timeout", 30, "HTTP请求超时(秒)")
@@ -176,15 +129,10 @@ func init() {
 	// 添加子命令
 	rootCmd.AddCommand(extractCmd)
 	rootCmd.AddCommand(downloadCmd)
-	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(cookieCmd)
-	configCmd.AddCommand(configInitCmd)
 
 	// 添加 cookie 子命令
 	cookieCmd.AddCommand(cookieImportCmd)
-	cookieCmd.AddCommand(cookieListCmd)
-	cookieCmd.AddCommand(cookieTestCmd)
-	cookieCmd.AddCommand(cookieValidateCmd)
 
 	// cookie import 命令参数
 	cookieImportCmd.Flags().StringVar(&flagCurlCommand, "curl", "", "curl 命令字符串")
@@ -193,10 +141,6 @@ func init() {
 	cookieImportCmd.Flags().BoolVar(&flagTestMode, "test", false, "导入后立即测试 cookie 有效性")
 	cookieImportCmd.Flags().StringVar(&flagTestURL, "test-url", "", "测试 URL（仅在 --test 模式下有效）")
 	cookieImportCmd.MarkFlagsMutuallyExclusive("curl", "file")
-
-	// cookie test 命令参数
-	cookieTestCmd.Flags().StringVar(&flagTestURL, "url", "", "测试 URL")
-	cookieTestCmd.MarkFlagRequired("url")
 
 	// 标记必需参数
 	rootCmd.MarkFlagsMutuallyExclusive("tid", "input")
@@ -377,38 +321,6 @@ func runDownloader(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runConfigInit 初始化配置文件
-func runConfigInit(cmd *cobra.Command, args []string) error {
-	configFile := "config.json"
-
-	// 检查配置文件是否已存在
-	if _, err := os.Stat(configFile); err == nil {
-		fmt.Printf("配置文件 %s 已存在，是否覆盖? (y/N): ", configFile)
-		var response string
-		fmt.Scanln(&response)
-		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
-			fmt.Println("操作已取消")
-			return nil
-		}
-	}
-
-	// 创建默认配置
-	defaultConfig := NewDefaultConfig()
-
-	// 保存配置文件
-	configJSON, err := defaultConfig.ToJSON()
-	if err != nil {
-		return fmt.Errorf("序列化配置失败: %v", err)
-	}
-
-	if err := os.WriteFile(configFile, []byte(configJSON), 0644); err != nil {
-		return fmt.Errorf("保存配置文件失败: %v", err)
-	}
-
-	fmt.Printf("✓ 默认配置文件已保存到: %s\n", configFile)
-	return nil
-}
-
 // validateFlags 验证命令行参数
 func validateFlags() error {
 	// 必须指定TID或输入文件
@@ -572,12 +484,6 @@ func formatFileSize(size int64) string {
 	default:
 		return fmt.Sprintf("%d B", size)
 	}
-}
-
-// ToJSON 将配置转换为JSON字符串
-func (c *Config) ToJSON() (string, error) {
-	// 这里需要实现JSON序列化，暂时返回空
-	return "{}", nil
 }
 
 // runCookieImport 运行 cookie 导入命令

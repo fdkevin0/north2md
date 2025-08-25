@@ -12,20 +12,20 @@ import (
 
 // CurlCommand 表示解析后的 curl 命令
 type CurlCommand struct {
-	URL     string            `json:"url"`      // 目标URL
-	Headers map[string]string `json:"headers"`  // HTTP请求头
-	Cookies string            `json:"cookies"`  // Cookie字符串
-	Method  string            `json:"method"`   // HTTP方法
-	Data    string            `json:"data"`     // POST数据
+	URL     string            `toml:"url"`     // 目标URL
+	Headers map[string]string `toml:"headers"` // HTTP请求头
+	Cookies string            `toml:"cookies"` // Cookie字符串
+	Method  string            `toml:"method"`  // HTTP方法
+	Data    string            `toml:"data"`    // POST数据
 }
 
 // CurlImportOptions curl 导入配置
 type CurlImportOptions struct {
-	OverwriteExisting bool     `json:"overwrite_existing"` // 是否覆盖已存在的cookie
-	AutoInferDomain   bool     `json:"auto_infer_domain"`  // 是否自动推断域名
-	AutoInferPath     bool     `json:"auto_infer_path"`    // 是否自动推断路径
-	DefaultExpiry     int      `json:"default_expiry"`     // 默认过期时间(小时)
-	FilterPatterns    []string `json:"filter_patterns"`   // 过滤模式
+	OverwriteExisting bool     `toml:"overwrite_existing"` // 是否覆盖已存在的cookie
+	AutoInferDomain   bool     `toml:"auto_infer_domain"`  // 是否自动推断域名
+	AutoInferPath     bool     `toml:"auto_infer_path"`    // 是否自动推断路径
+	DefaultExpiry     int      `toml:"default_expiry"`     // 默认过期时间(小时)
+	FilterPatterns    []string `toml:"filter_patterns"`    // 过滤模式
 }
 
 // CurlParser curl命令解析器接口
@@ -93,9 +93,9 @@ func (cm *DefaultCookieManager) LoadFromFile(filepath string) error {
 		return nil
 	}
 
-	err = cm.jar.FromJSON(string(data))
+	err = cm.jar.FromTOML(data)
 	if err != nil {
-		// JSON解析失败，备份旧文件后重建
+		// TOML解析失败，备份旧文件后重建
 		backupPath := filepath + ".backup." + time.Now().Format("20060102_150405")
 		os.Rename(filepath, backupPath)
 		return cm.SaveToFile(filepath)
@@ -119,12 +119,12 @@ func (cm *DefaultCookieManager) SaveToFile(filepath string) error {
 	// 清理过期Cookie
 	cm.CleanExpired()
 
-	jsonData, err := cm.jar.ToJSON()
+	tomlData, err := cm.jar.ToTOML()
 	if err != nil {
 		return fmt.Errorf("序列化Cookie失败: %v", err)
 	}
 
-	err = os.WriteFile(filepath, []byte(jsonData), 0600)
+	err = os.WriteFile(filepath, tomlData, 0600)
 	if err != nil {
 		return fmt.Errorf("写入Cookie文件失败: %v", err)
 	}
@@ -302,7 +302,7 @@ func (cm *DefaultCookieManager) CleanExpired() {
 func (cm *DefaultCookieManager) SetCookieFromString(cookieStr, domain, path string) error {
 	// 解析Cookie字符串，格式："name=value; name2=value2"
 	pairs := strings.Split(cookieStr, ";")
-	
+
 	for _, pair := range pairs {
 		pair = strings.TrimSpace(pair)
 		if pair == "" {
@@ -520,16 +520,16 @@ func (p *DefaultCurlParser) ParseFromFile(filePath string) ([]*CurlCommand, erro
 
 	content := string(data)
 	lines := strings.Split(content, "\n")
-	
+
 	var commands []*CurlCommand
 	var currentCmd strings.Builder
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		
+
 		// 如果是新的 curl 命令
 		if strings.HasPrefix(line, "curl ") {
 			// 处理上一个命令
@@ -549,7 +549,7 @@ func (p *DefaultCurlParser) ParseFromFile(filePath string) ([]*CurlCommand, erro
 			}
 		}
 	}
-	
+
 	// 处理最后一个命令
 	if currentCmd.Len() > 0 {
 		cmd, err := p.ParseCommand(currentCmd.String())
@@ -557,7 +557,7 @@ func (p *DefaultCurlParser) ParseFromFile(filePath string) ([]*CurlCommand, erro
 			commands = append(commands, cmd)
 		}
 	}
-	
+
 	return commands, nil
 }
 

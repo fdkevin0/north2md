@@ -110,18 +110,15 @@ func (g *DefaultMarkdownGenerator) SavePost(post *Post, baseDir string) error {
 	}
 
 	// 保存元数据
-	metadata, err := post.ToJSON()
+	metadata, err := post.ToTOML()
 	if err != nil {
 		return fmt.Errorf("生成元数据失败: %v", err)
 	}
 
-	metadataFile := filepath.Join(tidDir, "metadata.json")
-	if err := os.WriteFile(metadataFile, []byte(metadata), 0644); err != nil {
-		return fmt.Errorf("保存metadata.json失败: %v", err)
+	metadataFile := filepath.Join(tidDir, "metadata.toml")
+	if err := os.WriteFile(metadataFile, metadata, 0644); err != nil {
+		return fmt.Errorf("保存metadata.toml失败: %v", err)
 	}
-
-	// TODO: 复制图片和附件文件到对应的目录
-	// 这部分需要在downloader.go中实现相应的文件复制功能
 
 	return nil
 }
