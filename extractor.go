@@ -8,31 +8,20 @@ import (
 	"time"
 )
 
-// DataExtractor 数据提取器接口
-type DataExtractor interface {
-	ExtractPost(parser HTMLParser) (*Post, error)
-	ExtractPostFromMultiplePages(parsers []HTMLParser) (*Post, error)
-	ExtractMainPost(parser HTMLParser) (*PostEntry, error)
-	ExtractReplies(parser HTMLParser) ([]PostEntry, error)
-	ExtractAuthor(element Element) (*Author, error)
-	ExtractImages(element Element, baseURL string) ([]Image, error)
-	ExtractAttachments(element Element, baseURL string) ([]Attachment, error)
-}
-
 // DefaultDataExtractor 默认数据提取器实现
-type DefaultDataExtractor struct {
+type DataExtractor struct {
 	selectors *HTMLSelectors
 }
 
 // NewDataExtractor 创建新的数据提取器
-func NewDataExtractor(selectors *HTMLSelectors) *DefaultDataExtractor {
-	return &DefaultDataExtractor{
+func NewDataExtractor(selectors *HTMLSelectors) *DataExtractor {
+	return &DataExtractor{
 		selectors: selectors,
 	}
 }
 
 // ExtractPost 提取完整的帖子数据
-func (e *DefaultDataExtractor) ExtractPost(parser HTMLParser) (*Post, error) {
+func (e *DataExtractor) ExtractPost(parser *HTMLParser) (*Post, error) {
 	post := &Post{
 		CreatedAt: time.Now(),
 	}
@@ -77,7 +66,7 @@ func (e *DefaultDataExtractor) ExtractPost(parser HTMLParser) (*Post, error) {
 }
 
 // ExtractPostFromMultiplePages 从多个页面提取完整的帖子数据
-func (e *DefaultDataExtractor) ExtractPostFromMultiplePages(parsers []HTMLParser) (*Post, error) {
+func (e *DataExtractor) ExtractPostFromMultiplePages(parsers []*HTMLParser) (*Post, error) {
 	if len(parsers) == 0 {
 		return nil, fmt.Errorf("没有提供页面解析器")
 	}
@@ -107,7 +96,7 @@ func (e *DefaultDataExtractor) ExtractPostFromMultiplePages(parsers []HTMLParser
 }
 
 // ExtractMainPost 提取主楼内容
-func (e *DefaultDataExtractor) ExtractMainPost(parser HTMLParser) (*PostEntry, error) {
+func (e *DataExtractor) ExtractMainPost(parser *HTMLParser) (*PostEntry, error) {
 	// 查找第一个帖子表格
 	postTables := parser.FindElements(e.selectors.PostTable)
 	if postTables.Length() == 0 {
@@ -119,7 +108,7 @@ func (e *DefaultDataExtractor) ExtractMainPost(parser HTMLParser) (*PostEntry, e
 }
 
 // ExtractReplies 提取所有回复
-func (e *DefaultDataExtractor) ExtractReplies(parser HTMLParser) ([]PostEntry, error) {
+func (e *DataExtractor) ExtractReplies(parser *HTMLParser) ([]PostEntry, error) {
 	var replies []PostEntry
 
 	// 查找所有帖子表格，跳过第一个（主楼）
@@ -142,7 +131,7 @@ func (e *DefaultDataExtractor) ExtractReplies(parser HTMLParser) ([]PostEntry, e
 }
 
 // extractPostEntry 提取单个帖子条目
-func (e *DefaultDataExtractor) extractPostEntry(table Element, floor, baseURL string) (*PostEntry, error) {
+func (e *DataExtractor) extractPostEntry(table Element, floor, baseURL string) (*PostEntry, error) {
 	entry := &PostEntry{
 		Floor: floor,
 	}
@@ -191,7 +180,7 @@ func (e *DefaultDataExtractor) extractPostEntry(table Element, floor, baseURL st
 }
 
 // ExtractAuthor 提取作者信息
-func (e *DefaultDataExtractor) ExtractAuthor(element Element) (*Author, error) {
+func (e *DataExtractor) ExtractAuthor(element Element) (*Author, error) {
 	author := &Author{}
 
 	// 提取用户名 - 查找strong标签
@@ -228,7 +217,7 @@ func (e *DefaultDataExtractor) ExtractAuthor(element Element) (*Author, error) {
 }
 
 // ExtractImages 提取图片信息
-func (e *DefaultDataExtractor) ExtractImages(element Element, baseURL string) ([]Image, error) {
+func (e *DataExtractor) ExtractImages(element Element, baseURL string) ([]Image, error) {
 	var images []Image
 
 	// 查找所有图片
@@ -264,7 +253,7 @@ func (e *DefaultDataExtractor) ExtractImages(element Element, baseURL string) ([
 }
 
 // ExtractAttachments 提取附件信息
-func (e *DefaultDataExtractor) ExtractAttachments(element Element, baseURL string) ([]Attachment, error) {
+func (e *DataExtractor) ExtractAttachments(element Element, baseURL string) ([]Attachment, error) {
 	var attachments []Attachment
 
 	// 查找附件链接
@@ -303,7 +292,7 @@ func (e *DefaultDataExtractor) ExtractAttachments(element Element, baseURL strin
 // 辅助方法
 
 // extractForumName 提取版块名称
-func (e *DefaultDataExtractor) extractForumName(element Element) string {
+func (e *DataExtractor) extractForumName(element Element) string {
 	// 从导航链接中提取版块名称
 	text := element.Text()
 
@@ -317,7 +306,7 @@ func (e *DefaultDataExtractor) extractForumName(element Element) string {
 }
 
 // generateFloorNumber 生成楼层编号
-func (e *DefaultDataExtractor) generateFloorNumber(index int) string {
+func (e *DataExtractor) generateFloorNumber(index int) string {
 	if index == 0 {
 		return "GF"
 	}
@@ -325,7 +314,7 @@ func (e *DefaultDataExtractor) generateFloorNumber(index int) string {
 }
 
 // parsePostTime 解析发帖时间
-func (e *DefaultDataExtractor) parsePostTime(timeText string) time.Time {
+func (e *DataExtractor) parsePostTime(timeText string) time.Time {
 	timeText = strings.TrimSpace(timeText)
 
 	// 尝试多种时间格式
@@ -353,7 +342,7 @@ func (e *DefaultDataExtractor) parsePostTime(timeText string) time.Time {
 }
 
 // extractPostID 提取帖子ID
-func (e *DefaultDataExtractor) extractPostID(element Element) string {
+func (e *DataExtractor) extractPostID(element Element) string {
 	// 尝试从read_xxx id中提取
 	contentElement := element.Find("[id^=\"read_\"]")
 	if contentElement.Length() > 0 {
@@ -376,7 +365,7 @@ func (e *DefaultDataExtractor) extractPostID(element Element) string {
 }
 
 // extractUIDFromURL 从URL中提取UID
-func (e *DefaultDataExtractor) extractUIDFromURL(url string) string {
+func (e *DataExtractor) extractUIDFromURL(url string) string {
 	re := regexp.MustCompile(`uid[=-](\d+)`)
 	matches := re.FindStringSubmatch(url)
 	if len(matches) > 1 {
@@ -386,7 +375,7 @@ func (e *DefaultDataExtractor) extractUIDFromURL(url string) string {
 }
 
 // extractPostCount 从文本中提取发帖数
-func (e *DefaultDataExtractor) extractPostCount(text string) int {
+func (e *DataExtractor) extractPostCount(text string) int {
 	re := regexp.MustCompile(`帖子[：:]?\s*(\d+)`)
 	matches := re.FindStringSubmatch(text)
 	if len(matches) > 1 {
@@ -398,7 +387,7 @@ func (e *DefaultDataExtractor) extractPostCount(text string) int {
 }
 
 // extractRegisterDate 从文本中提取注册时间
-func (e *DefaultDataExtractor) extractRegisterDate(text string) string {
+func (e *DataExtractor) extractRegisterDate(text string) string {
 	re := regexp.MustCompile(`注册[：:]?\s*(\d{4}-\d{1,2}-\d{1,2})`)
 	matches := re.FindStringSubmatch(text)
 	if len(matches) > 1 {
@@ -408,7 +397,7 @@ func (e *DefaultDataExtractor) extractRegisterDate(text string) string {
 }
 
 // isSkippableImage 检查是否应跳过的图片
-func (e *DefaultDataExtractor) isSkippableImage(src string) bool {
+func (e *DataExtractor) isSkippableImage(src string) bool {
 	skipPatterns := []string{
 		"avatar", "face", "icon", "smile", "emotion",
 		"star", "level", "rank", "medal",
@@ -425,7 +414,7 @@ func (e *DefaultDataExtractor) isSkippableImage(src string) bool {
 }
 
 // isAttachmentImage 检查是否为附件图片
-func (e *DefaultDataExtractor) isAttachmentImage(img Element) bool {
+func (e *DataExtractor) isAttachmentImage(img Element) bool {
 	// 检查父元素是否包含附件相关信息
 	parent := img.Parent()
 	for i := 0; i < 3 && parent.Length() > 0; i++ {
@@ -446,7 +435,7 @@ func (e *DefaultDataExtractor) isAttachmentImage(img Element) bool {
 }
 
 // extractFileNameFromURL 从URL中提取文件名
-func (e *DefaultDataExtractor) extractFileNameFromURL(url string) string {
+func (e *DataExtractor) extractFileNameFromURL(url string) string {
 	// 从URL路径中提取文件名
 	parts := strings.Split(url, "/")
 	if len(parts) > 0 {
@@ -463,7 +452,7 @@ func (e *DefaultDataExtractor) extractFileNameFromURL(url string) string {
 }
 
 // extractFileSize 从文本中提取文件大小
-func (e *DefaultDataExtractor) extractFileSize(text string) int64 {
+func (e *DataExtractor) extractFileSize(text string) int64 {
 	re := regexp.MustCompile(`(\d+(?:\.\d+)?)\s*(KB|MB|GB|B)`)
 	matches := re.FindStringSubmatch(strings.ToUpper(text))
 	if len(matches) < 3 {
@@ -489,7 +478,7 @@ func (e *DefaultDataExtractor) extractFileSize(text string) int64 {
 }
 
 // cleanTextContent 清理文本内容
-func (e *DefaultDataExtractor) cleanTextContent(text string) string {
+func (e *DataExtractor) cleanTextContent(text string) string {
 	// 移除多余的空白字符
 	text = regexp.MustCompile(`\s+`).ReplaceAllString(text, " ")
 
@@ -500,7 +489,7 @@ func (e *DefaultDataExtractor) cleanTextContent(text string) string {
 }
 
 // resolveURL 解析URL
-func (e *DefaultDataExtractor) resolveURL(relativeURL, baseURL string) string {
+func (e *DataExtractor) resolveURL(relativeURL, baseURL string) string {
 	if relativeURL == "" {
 		return ""
 	}

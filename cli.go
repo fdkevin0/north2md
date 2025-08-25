@@ -378,7 +378,7 @@ func applyFlags() {
 }
 
 // loadHTML 加载HTML内容
-func loadHTML(parser HTMLParser) error {
+func loadHTML(parser *HTMLParser) error {
 	if config.InputFile != "" {
 		// 从本地文件加载
 		fmt.Printf("正在加载本地HTML文件: %s\n", config.InputFile)

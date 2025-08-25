@@ -2,8 +2,6 @@ package main
 
 import (
 	"time"
-
-	"github.com/BurntSushi/toml"
 )
 
 // Post 表示一个完整的论坛帖子
@@ -78,20 +76,4 @@ type CookieEntry struct {
 type CookieJar struct {
 	Cookies     []CookieEntry `toml:"cookies"`      // Cookie列表
 	LastUpdated time.Time     `toml:"last_updated"` // 最后更新时间
-}
-
-func (p *Post) ToTOML() ([]byte, error) {
-	return toml.Marshal(p)
-}
-
-func (cj *CookieJar) ToTOML() ([]byte, error) {
-	return toml.Marshal(cj)
-}
-
-func (p *Post) FromTOML(data []byte) error {
-	return toml.Unmarshal(data, p)
-}
-
-func (cj *CookieJar) FromTOML(data []byte) error {
-	return toml.Unmarshal(data, cj)
 }

@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/BurntSushi/toml"
 )
 
 // CurlCommand 表示解析后的 curl 命令
@@ -91,7 +93,7 @@ func (cm *DefaultCookieManager) LoadFromFile(filepath string) error {
 		return nil
 	}
 
-	err = cm.jar.FromTOML(data)
+	err = toml.Unmarshal(data, cm.jar)
 	if err != nil {
 		// TOML解析失败，备份旧文件后重建
 		backupPath := filepath + ".backup." + time.Now().Format("20060102_150405")
@@ -116,7 +118,7 @@ func (cm *DefaultCookieManager) SaveToFile(filepath string) error {
 	// 清理过期Cookie
 	cm.CleanExpired()
 
-	tomlData, err := cm.jar.ToTOML()
+	tomlData, err := toml.Marshal(cm.jar)
 	if err != nil {
 		return fmt.Errorf("序列化Cookie失败: %v", err)
 	}

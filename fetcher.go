@@ -12,23 +12,8 @@ import (
 	"time"
 )
 
-// HTTPFetcher HTTP抓取器接口
-type HTTPFetcher interface {
-	FetchPost(tid string) (string, error)
-	FetchPostWithPage(tid string, page int) (string, error)
-	FetchWithRetry(url string) (*http.Response, error)
-	SetHeaders(headers map[string]string)
-	SetTimeout(timeout time.Duration)
-	LoadCookies(cookieFile string) error
-	SaveCookies(cookieFile string) error
-	SetCookie(cookie *CookieEntry)
-	GetCookies(domain string) []*CookieEntry
-	ClearCookies()
-	FetchURL(url string) (string, error)
-}
-
-// DefaultHTTPFetcher 默认HTTP抓取器实现
-type DefaultHTTPFetcher struct {
+// HTTPFetcher 默认HTTP抓取器实现
+type HTTPFetcher struct {
 	client        *http.Client
 	config        *HTTPOptions
 	cookieManager CookieManager
@@ -36,12 +21,12 @@ type DefaultHTTPFetcher struct {
 }
 
 // NewHTTPFetcher 创建新的HTTP抓取器
-func NewHTTPFetcher(config *HTTPOptions, baseURL string) *DefaultHTTPFetcher {
+func NewHTTPFetcher(config *HTTPOptions, baseURL string) *HTTPFetcher {
 	client := &http.Client{
 		Timeout: config.Timeout,
 	}
 
-	fetcher := &DefaultHTTPFetcher{
+	fetcher := &HTTPFetcher{
 		client:        client,
 		config:        config,
 		cookieManager: NewCookieManager(),
@@ -57,7 +42,7 @@ func NewHTTPFetcher(config *HTTPOptions, baseURL string) *DefaultHTTPFetcher {
 }
 
 // FetchPost 抓取指定TID的帖子内容
-func (f *DefaultHTTPFetcher) FetchPost(tid string) (string, error) {
+func (f *HTTPFetcher) FetchPost(tid string) (string, error) {
 	if tid == "" {
 		return "", fmt.Errorf("TID不能为空")
 	}
@@ -69,14 +54,14 @@ func (f *DefaultHTTPFetcher) FetchPost(tid string) (string, error) {
 }
 
 // buildPostURL 构建帖子URL
-func (f *DefaultHTTPFetcher) buildPostURL(tid string) string {
+func (f *HTTPFetcher) buildPostURL(tid string) string {
 	// 确保baseURL以/结尾
 	baseURL := strings.TrimRight(f.baseURL, "/")
 	return fmt.Sprintf("%s/read.php?tid-%s.html", baseURL, tid)
 }
 
 // FetchPostWithPage 抓取指定TID和页码的帖子内容
-func (f *DefaultHTTPFetcher) FetchPostWithPage(tid string, page int) (string, error) {
+func (f *HTTPFetcher) FetchPostWithPage(tid string, page int) (string, error) {
 	if tid == "" {
 		return "", fmt.Errorf("TID不能为空")
 	}
@@ -90,7 +75,7 @@ func (f *DefaultHTTPFetcher) FetchPostWithPage(tid string, page int) (string, er
 }
 
 // buildPostURLWithPage 构建带页码的帖子URL
-func (f *DefaultHTTPFetcher) buildPostURLWithPage(tid string, page int) string {
+func (f *HTTPFetcher) buildPostURLWithPage(tid string, page int) string {
 	// 确保baseURL以/结尾
 	baseURL := strings.TrimRight(f.baseURL, "/")
 
@@ -104,7 +89,7 @@ func (f *DefaultHTTPFetcher) buildPostURLWithPage(tid string, page int) string {
 }
 
 // FetchURL 抓取指定URL的内容
-func (f *DefaultHTTPFetcher) FetchURL(targetURL string) (string, error) {
+func (f *HTTPFetcher) FetchURL(targetURL string) (string, error) {
 	resp, err := f.FetchWithRetry(targetURL)
 	if err != nil {
 		return "", err
@@ -130,7 +115,7 @@ func (f *DefaultHTTPFetcher) FetchURL(targetURL string) (string, error) {
 }
 
 // FetchWithRetry 带重试机制的HTTP请求
-func (f *DefaultHTTPFetcher) FetchWithRetry(targetURL string) (*http.Response, error) {
+func (f *HTTPFetcher) FetchWithRetry(targetURL string) (*http.Response, error) {
 	var lastErr error
 
 	for attempt := 0; attempt <= f.config.MaxRetries; attempt++ {
@@ -172,7 +157,7 @@ func (f *DefaultHTTPFetcher) FetchWithRetry(targetURL string) (*http.Response, e
 }
 
 // doRequest 执行单个HTTP请求
-func (f *DefaultHTTPFetcher) doRequest(targetURL string) (*http.Response, error) {
+func (f *HTTPFetcher) doRequest(targetURL string) (*http.Response, error) {
 	req, err := http.NewRequest("GET", targetURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %v", err)
@@ -224,7 +209,7 @@ func (f *DefaultHTTPFetcher) doRequest(targetURL string) (*http.Response, error)
 }
 
 // SetHeaders 设置自定义请求头
-func (f *DefaultHTTPFetcher) SetHeaders(headers map[string]string) {
+func (f *HTTPFetcher) SetHeaders(headers map[string]string) {
 	if f.config.CustomHeaders == nil {
 		f.config.CustomHeaders = make(map[string]string)
 	}
@@ -235,13 +220,13 @@ func (f *DefaultHTTPFetcher) SetHeaders(headers map[string]string) {
 }
 
 // SetTimeout 设置请求超时时间
-func (f *DefaultHTTPFetcher) SetTimeout(timeout time.Duration) {
+func (f *HTTPFetcher) SetTimeout(timeout time.Duration) {
 	f.config.Timeout = timeout
 	f.client.Timeout = timeout
 }
 
 // LoadCookies 从文件加载Cookie
-func (f *DefaultHTTPFetcher) LoadCookies(cookieFile string) error {
+func (f *HTTPFetcher) LoadCookies(cookieFile string) error {
 	if !f.config.EnableCookie {
 		return nil
 	}
@@ -250,7 +235,7 @@ func (f *DefaultHTTPFetcher) LoadCookies(cookieFile string) error {
 }
 
 // SaveCookies 保存Cookie到文件
-func (f *DefaultHTTPFetcher) SaveCookies(cookieFile string) error {
+func (f *HTTPFetcher) SaveCookies(cookieFile string) error {
 	if !f.config.EnableCookie {
 		return nil
 	}
@@ -259,14 +244,14 @@ func (f *DefaultHTTPFetcher) SaveCookies(cookieFile string) error {
 }
 
 // SetCookie 设置Cookie
-func (f *DefaultHTTPFetcher) SetCookie(cookie *CookieEntry) {
+func (f *HTTPFetcher) SetCookie(cookie *CookieEntry) {
 	if f.config.EnableCookie {
 		f.cookieManager.AddCookie(cookie)
 	}
 }
 
 // GetCookies 获取指定域名的Cookie
-func (f *DefaultHTTPFetcher) GetCookies(domain string) []*CookieEntry {
+func (f *HTTPFetcher) GetCookies(domain string) []*CookieEntry {
 	if !f.config.EnableCookie {
 		return nil
 	}
@@ -277,14 +262,14 @@ func (f *DefaultHTTPFetcher) GetCookies(domain string) []*CookieEntry {
 }
 
 // ClearCookies 清除所有Cookie
-func (f *DefaultHTTPFetcher) ClearCookies() {
+func (f *HTTPFetcher) ClearCookies() {
 	if f.config.EnableCookie {
 		f.cookieManager.ClearCookies()
 	}
 }
 
 // SetCookieFromString 从字符串设置Cookie
-func (f *DefaultHTTPFetcher) SetCookieFromString(cookieStr, domain string) error {
+func (f *HTTPFetcher) SetCookieFromString(cookieStr, domain string) error {
 	if !f.config.EnableCookie {
 		return nil
 	}
@@ -293,7 +278,7 @@ func (f *DefaultHTTPFetcher) SetCookieFromString(cookieStr, domain string) error
 }
 
 // GetCookieString 获取Cookie字符串
-func (f *DefaultHTTPFetcher) GetCookieString(domain string) string {
+func (f *HTTPFetcher) GetCookieString(domain string) string {
 	if !f.config.EnableCookie {
 		return ""
 	}
@@ -302,7 +287,7 @@ func (f *DefaultHTTPFetcher) GetCookieString(domain string) string {
 }
 
 // ValidateURL 验证URL是否有效
-func (f *DefaultHTTPFetcher) ValidateURL(urlStr string) error {
+func (f *HTTPFetcher) ValidateURL(urlStr string) error {
 	_, err := url.Parse(urlStr)
 	if err != nil {
 		return fmt.Errorf("无效的URL: %v", err)
@@ -311,25 +296,25 @@ func (f *DefaultHTTPFetcher) ValidateURL(urlStr string) error {
 }
 
 // GetBaseURL 获取基础URL
-func (f *DefaultHTTPFetcher) GetBaseURL() string {
+func (f *HTTPFetcher) GetBaseURL() string {
 	return f.baseURL
 }
 
 // SetBaseURL 设置基础URL
-func (f *DefaultHTTPFetcher) SetBaseURL(baseURL string) {
+func (f *HTTPFetcher) SetBaseURL(baseURL string) {
 	f.baseURL = strings.TrimRight(baseURL, "/")
 }
 
 // OnlinePostFetcher 在线帖子获取器
 type OnlinePostFetcher struct {
-	httpFetcher   HTTPFetcher
-	htmlParser    HTMLParser
+	httpFetcher   *HTTPFetcher
+	htmlParser    *HTMLParser
 	selectors     *HTMLSelectors
-	dataExtractor DataExtractor
+	dataExtractor *DataExtractor
 }
 
 // NewOnlinePostFetcher 创建新的在线帖子获取器
-func NewOnlinePostFetcher(httpFetcher HTTPFetcher, htmlParser HTMLParser, selectors *HTMLSelectors) *OnlinePostFetcher {
+func NewOnlinePostFetcher(httpFetcher *HTTPFetcher, htmlParser *HTMLParser, selectors *HTMLSelectors) *OnlinePostFetcher {
 	return &OnlinePostFetcher{
 		httpFetcher:   httpFetcher,
 		htmlParser:    htmlParser,
@@ -374,7 +359,7 @@ func (f *OnlinePostFetcher) FetchPost(tid string) (*Post, error) {
 
 	// 处理多页情况
 	// 收集所有页面的解析器
-	var parsers []HTMLParser
+	var parsers []*HTMLParser
 
 	// 添加第一页解析器
 	parsers = append(parsers, f.htmlParser)
@@ -410,7 +395,7 @@ func (f *OnlinePostFetcher) FetchPost(tid string) (*Post, error) {
 }
 
 // extractTotalPages 从页面中提取总页数
-func (f *OnlinePostFetcher) extractTotalPages(parser HTMLParser) int {
+func (f *OnlinePostFetcher) extractTotalPages(parser *HTMLParser) int {
 	// 查找包含页数信息的元素
 	// 根据示例HTML，页数信息在 "Pages: 1/8" 格式中
 	pagesElement := parser.FindElement(".pagesone")
@@ -450,13 +435,13 @@ func (f *OnlinePostFetcher) extractTotalPages(parser HTMLParser) int {
 
 // LocalPostFetcher 本地帖子获取器
 type LocalPostFetcher struct {
-	htmlParser    HTMLParser
+	htmlParser    *HTMLParser
 	selectors     *HTMLSelectors
-	dataExtractor DataExtractor
+	dataExtractor *DataExtractor
 }
 
 // NewLocalPostFetcher 创建新的本地帖子获取器
-func NewLocalPostFetcher(htmlParser HTMLParser, selectors *HTMLSelectors) *LocalPostFetcher {
+func NewLocalPostFetcher(htmlParser *HTMLParser, selectors *HTMLSelectors) *LocalPostFetcher {
 	return &LocalPostFetcher{
 		htmlParser:    htmlParser,
 		selectors:     selectors,

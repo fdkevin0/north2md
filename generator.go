@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/BurntSushi/toml"
 )
 
 // MarkdownGenerator Markdown生成器接口
@@ -110,7 +112,7 @@ func (g *DefaultMarkdownGenerator) SavePost(post *Post, baseDir string) error {
 	}
 
 	// 保存元数据
-	metadata, err := post.ToTOML()
+	metadata, err := toml.Marshal(post)
 	if err != nil {
 		return fmt.Errorf("生成元数据失败: %v", err)
 	}

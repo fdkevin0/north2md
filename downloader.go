@@ -26,7 +26,7 @@ type AttachmentDownloader interface {
 
 // DefaultAttachmentDownloader 默认附件下载器实现
 type DefaultAttachmentDownloader struct {
-	httpFetcher HTTPFetcher
+	httpFetcher *HTTPFetcher
 	config      *CacheOptions
 	semaphore   chan struct{} // 限制并发数
 }
@@ -49,7 +49,7 @@ type DownloadInfo struct {
 }
 
 // NewAttachmentDownloader 创建新的附件下载器
-func NewAttachmentDownloader(httpFetcher HTTPFetcher, config *CacheOptions) *DefaultAttachmentDownloader {
+func NewAttachmentDownloader(httpFetcher *HTTPFetcher, config *CacheOptions) *DefaultAttachmentDownloader {
 	// 创建信号量限制并发数
 	maxConcurrent := 5
 	if config != nil {

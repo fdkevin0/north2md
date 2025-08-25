@@ -38,20 +38,8 @@ type Elements interface {
 	HTML() string
 }
 
-// HTMLParser HTML解析器接口
-type HTMLParser interface {
-	LoadFromFile(filepath string) error
-	LoadFromString(html string) error
-	LoadFromURL(url string) error
-	FindElement(selector string) Element
-	FindElements(selector string) Elements
-	GetBaseURL() string
-	SetBaseURL(baseURL string)
-	GetDocument() *goquery.Document
-}
-
 // DefaultHTMLParser 默认HTML解析器实现
-type DefaultHTMLParser struct {
+type HTMLParser struct {
 	doc     *goquery.Document
 	baseURL string
 }
@@ -67,12 +55,12 @@ type GoqueryElements struct {
 }
 
 // NewHTMLParser 创建新的HTML解析器
-func NewHTMLParser() *DefaultHTMLParser {
-	return &DefaultHTMLParser{}
+func NewHTMLParser() *HTMLParser {
+	return &HTMLParser{}
 }
 
 // LoadFromFile 从文件加载HTML
-func (p *DefaultHTMLParser) LoadFromFile(filepath string) error {
+func (p *HTMLParser) LoadFromFile(filepath string) error {
 	file, err := os.Open(filepath)
 	if err != nil {
 		return fmt.Errorf("打开文件失败: %v", err)
@@ -89,7 +77,7 @@ func (p *DefaultHTMLParser) LoadFromFile(filepath string) error {
 }
 
 // LoadFromString 从字符串加载HTML
-func (p *DefaultHTMLParser) LoadFromString(html string) error {
+func (p *HTMLParser) LoadFromString(html string) error {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
 		return fmt.Errorf("解析HTML字符串失败: %v", err)
@@ -99,20 +87,8 @@ func (p *DefaultHTMLParser) LoadFromString(html string) error {
 	return nil
 }
 
-// LoadFromURL 从URL加载HTML
-func (p *DefaultHTMLParser) LoadFromURL(targetURL string) error {
-	doc, err := goquery.NewDocument(targetURL)
-	if err != nil {
-		return fmt.Errorf("从URL加载HTML失败: %v", err)
-	}
-
-	p.doc = doc
-	p.baseURL = targetURL
-	return nil
-}
-
 // FindElement 查找单个元素
-func (p *DefaultHTMLParser) FindElement(selector string) Element {
+func (p *HTMLParser) FindElement(selector string) Element {
 	if p.doc == nil {
 		return &GoqueryElement{selection: &goquery.Selection{}}
 	}
@@ -122,7 +98,7 @@ func (p *DefaultHTMLParser) FindElement(selector string) Element {
 }
 
 // FindElements 查找多个元素
-func (p *DefaultHTMLParser) FindElements(selector string) Elements {
+func (p *HTMLParser) FindElements(selector string) Elements {
 	if p.doc == nil {
 		return &GoqueryElements{selection: &goquery.Selection{}}
 	}
@@ -132,7 +108,7 @@ func (p *DefaultHTMLParser) FindElements(selector string) Elements {
 }
 
 // GetBaseURL 获取基础URL
-func (p *DefaultHTMLParser) GetBaseURL() string {
+func (p *HTMLParser) GetBaseURL() string {
 	if p.baseURL != "" {
 		return p.baseURL
 	}
@@ -149,17 +125,17 @@ func (p *DefaultHTMLParser) GetBaseURL() string {
 }
 
 // SetBaseURL 设置基础URL
-func (p *DefaultHTMLParser) SetBaseURL(baseURL string) {
+func (p *HTMLParser) SetBaseURL(baseURL string) {
 	p.baseURL = baseURL
 }
 
 // GetDocument 获取goquery文档对象
-func (p *DefaultHTMLParser) GetDocument() *goquery.Document {
+func (p *HTMLParser) GetDocument() *goquery.Document {
 	return p.doc
 }
 
 // ResolveURL 解析相对URL为绝对URL
-func (p *DefaultHTMLParser) ResolveURL(relativeURL string) string {
+func (p *HTMLParser) ResolveURL(relativeURL string) string {
 	if relativeURL == "" {
 		return ""
 	}
