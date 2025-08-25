@@ -52,9 +52,6 @@ type DownloadInfo struct {
 func NewAttachmentDownloader(httpFetcher *HTTPFetcher, config *CacheOptions) *DefaultAttachmentDownloader {
 	// 创建信号量限制并发数
 	maxConcurrent := 5
-	if config != nil {
-		// 可以从config中获取最大并发数，这里暂时使用固定值
-	}
 
 	return &DefaultAttachmentDownloader{
 		httpFetcher: httpFetcher,

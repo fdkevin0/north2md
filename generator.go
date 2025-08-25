@@ -130,18 +130,18 @@ func (g *DefaultMarkdownGenerator) writePostInfo(md *strings.Builder, post *Post
 	md.WriteString("**基本信息**\n\n")
 
 	if post.Forum != "" {
-		md.WriteString(fmt.Sprintf("- **版块**: %s\n", g.escapeMarkdown(post.Forum)))
+		fmt.Fprintf(md, "- **版块**: %s\n", g.escapeMarkdown(post.Forum))
 	}
 
 	if post.URL != "" {
-		md.WriteString(fmt.Sprintf("- **原帖链接**: <%s>\n", post.URL))
+		fmt.Fprintf(md, "- **原帖链接**: <%s>\n", post.URL)
 	}
 
 	if !post.CreatedAt.IsZero() {
-		md.WriteString(fmt.Sprintf("- **创建时间**: %s\n", post.CreatedAt.Format("2006-01-02 15:04:05")))
+		fmt.Fprintf(md, "- **创建时间**: %s\n", post.CreatedAt.Format("2006-01-02 15:04:05"))
 	}
 
-	md.WriteString(fmt.Sprintf("- **总楼层数**: %d\n", post.TotalFloors))
+	fmt.Fprintf(md, "- **总楼层数**: %d\n", post.TotalFloors)
 	md.WriteString("\n")
 }
 
@@ -372,7 +372,7 @@ func (g *DefaultMarkdownGenerator) GenerateTableOfContents(post *Post) string {
 func (g *DefaultMarkdownGenerator) writeFooter(md *strings.Builder, post *Post) {
 	md.WriteString("---\n\n")
 	md.WriteString("*本文档由 HTML数据提取器 自动生成*\n\n")
-	md.WriteString(fmt.Sprintf("*生成时间: %s*\n", time.Now().Format("2006-01-02 15:04:05")))
+	fmt.Fprintf(md, "*生成时间: %s*\n", time.Now().Format("2006-01-02 15:04:05"))
 
 	// 统计信息
 	totalImages := len(post.MainPost.Images)
@@ -386,10 +386,10 @@ func (g *DefaultMarkdownGenerator) writeFooter(md *strings.Builder, post *Post) 
 	if totalImages > 0 || totalAttachments > 0 {
 		md.WriteString("\n**统计信息**:\n\n")
 		if totalImages > 0 {
-			md.WriteString(fmt.Sprintf("- 图片数量: %d\n", totalImages))
+			fmt.Fprintf(md, "- 图片数量: %d\n", totalImages)
 		}
 		if totalAttachments > 0 {
-			md.WriteString(fmt.Sprintf("- 附件数量: %d\n", totalAttachments))
+			fmt.Fprintf(md, "- 附件数量: %d\n", totalAttachments)
 		}
 	}
 }
