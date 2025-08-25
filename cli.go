@@ -432,40 +432,6 @@ func downloadAttachments(post *Post) error {
 	return nil
 }
 
-// printConfig 打印配置信息
-func printConfig() {
-	fmt.Println("=== 配置信息 ===")
-	fmt.Printf("TID: %s\n", config.TID)
-	fmt.Printf("输入文件: %s\n", config.InputFile)
-	fmt.Printf("输出文件: %s\n", config.OutputFile)
-	fmt.Printf("缓存目录: %s\n", config.CacheDir)
-	fmt.Printf("基础URL: %s\n", config.BaseURL)
-	fmt.Printf("启用缓存: %t\n", config.CacheOpts.EnableCache)
-	fmt.Printf("启用Cookie: %t\n", config.HTTPOpts.EnableCookie)
-	fmt.Printf("请求超时: %v\n", config.HTTPOpts.Timeout)
-	fmt.Printf("最大并发: %d\n", config.HTTPOpts.MaxConcurrent)
-	fmt.Println("================")
-}
-
-// printStats 打印统计信息
-func printStats(post *Post) {
-	totalImages := len(post.MainPost.Images)
-	totalAttachments := len(post.MainPost.Attachments)
-
-	for _, reply := range post.Replies {
-		totalImages += len(reply.Images)
-		totalAttachments += len(reply.Attachments)
-	}
-
-	fmt.Println("=== 统计信息 ===")
-	fmt.Printf("帖子标题: %s\n", post.Title)
-	fmt.Printf("版块: %s\n", post.Forum)
-	fmt.Printf("总楼层: %d\n", post.TotalFloors)
-	fmt.Printf("图片数量: %d\n", totalImages)
-	fmt.Printf("附件数量: %d\n", totalAttachments)
-	fmt.Println("================")
-}
-
 // formatFileSize 格式化文件大小
 func formatFileSize(size int64) string {
 	const (
@@ -571,36 +537,6 @@ func runCookieImport(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runCookieList 运行 cookie 列表命令
-func runCookieList(cmd *cobra.Command, args []string) error {
-	cookieManager := NewCookieManager()
-	if err := cookieManager.LoadFromFile(flagCookieFile); err != nil {
-		return fmt.Errorf("加载 Cookie 文件失败: %v", err)
-	}
-
-	cookies := cookieManager.GetAllCookies()
-	if len(cookies) == 0 {
-		fmt.Println("没有找到任何 cookies")
-		return nil
-	}
-
-	fmt.Printf("共找到 %d 个 cookies:\n\n", len(cookies))
-
-	for i, cookie := range cookies {
-		fmt.Printf("%d. %s\n", i+1, cookie.Name)
-		fmt.Printf("   值: %s\n", truncateString(cookie.Value, 50))
-		fmt.Printf("   域名: %s\n", cookie.Domain)
-		fmt.Printf("   路径: %s\n", cookie.Path)
-		if !cookie.Expires.IsZero() {
-			fmt.Printf("   过期时间: %s\n", cookie.Expires.Format("2006-01-02 15:04:05"))
-		}
-
-		fmt.Println()
-	}
-
-	return nil
-}
-
 // runCookieTestInternal 内部 cookie 测试函数
 func runCookieTestInternal(testURL string, cookieManager *DefaultCookieManager) error {
 	// 创建 Cookie 验证器
@@ -663,13 +599,6 @@ func min(a, b int) int {
 		return a
 	}
 	return b
-}
-
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
 }
 
 func getBoolDisplay(b bool) string {

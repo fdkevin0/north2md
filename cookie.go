@@ -75,8 +75,6 @@ func (cm *DefaultCookieManager) LoadFromFile(filepath string) error {
 		return nil
 	}
 
-	cm.jar.FilePath = filepath
-
 	// 检查文件是否存在
 	if _, err := os.Stat(filepath); os.IsNotExist(err) {
 		// 文件不存在，创建空的Cookie文件
@@ -113,7 +111,6 @@ func (cm *DefaultCookieManager) SaveToFile(filepath string) error {
 		return nil
 	}
 
-	cm.jar.FilePath = filepath
 	cm.jar.LastUpdated = time.Now()
 
 	// 清理过期Cookie

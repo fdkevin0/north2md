@@ -77,7 +77,6 @@ type CookieEntry struct {
 // CookieJar Cookie管理器
 type CookieJar struct {
 	Cookies     []CookieEntry `toml:"cookies"`      // Cookie列表
-	FilePath    string        `toml:"file_path"`    // 存储文件路径
 	LastUpdated time.Time     `toml:"last_updated"` // 最后更新时间
 }
 
