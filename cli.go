@@ -594,26 +594,11 @@ func runCookieList(cmd *cobra.Command, args []string) error {
 		if !cookie.Expires.IsZero() {
 			fmt.Printf("   过期时间: %s\n", cookie.Expires.Format("2006-01-02 15:04:05"))
 		}
-		if cookie.Source != "" {
-			fmt.Printf("   来源: %s\n", cookie.Source)
-		}
-		if !cookie.ImportedAt.IsZero() {
-			fmt.Printf("   导入时间: %s\n", cookie.ImportedAt.Format("2006-01-02 15:04:05"))
-		}
+
 		fmt.Println()
 	}
 
 	return nil
-}
-
-// runCookieTest 运行 cookie 测试命令
-func runCookieTest(cmd *cobra.Command, args []string) error {
-	cookieManager := NewCookieManager()
-	if err := cookieManager.LoadFromFile(flagCookieFile); err != nil {
-		return fmt.Errorf("加载 Cookie 文件失败: %v", err)
-	}
-
-	return runCookieTestInternal(flagTestURL, cookieManager)
 }
 
 // runCookieTestInternal 内部 cookie 测试函数
@@ -668,13 +653,6 @@ func runCookieTestInternal(testURL string, cookieManager *DefaultCookieManager) 
 		}
 	}
 
-	return nil
-}
-
-// runCookieValidate 运行 cookie 验证命令
-func runCookieValidate(cmd *cobra.Command, args []string) error {
-	// TODO: 实现 cookie 验证逻辑
-	fmt.Println("✓ Cookie 验证功能尚未实现")
 	return nil
 }
 

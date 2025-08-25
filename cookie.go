@@ -603,13 +603,10 @@ func (p *DefaultCurlParser) ExtractCookies(curlCmd *CurlCommand) ([]*CookieEntry
 
 		// 创建 CookieEntry
 		cookie := &CookieEntry{
-			Name:       name,
-			Value:      value,
-			Domain:     domain,
-			Path:       path,
-			Source:     "curl",
-			ImportedAt: time.Now(),
-			RawValue:   pair,
+			Name:   name,
+			Value:  value,
+			Domain: domain,
+			Path:   path,
 		}
 
 		// 设置默认过期时间
