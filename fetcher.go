@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -60,7 +61,7 @@ func (f *DefaultHTTPFetcher) FetchPost(tid string) (string, error) {
 
 	// 构建完整的URL
 	postURL := f.buildPostURL(tid)
-	
+
 	return f.FetchURL(postURL)
 }
 
@@ -129,7 +130,7 @@ func (f *DefaultHTTPFetcher) FetchWithRetry(targetURL string) (*http.Response, e
 		// 5xx错误继续重试
 		resp.Body.Close()
 		lastErr = fmt.Errorf("服务器错误 %d: %s", resp.StatusCode, resp.Status)
-		
+
 		// 5xx错误时增加重试间隔
 		if resp.StatusCode >= 500 {
 			time.Sleep(f.config.RetryDelay)
@@ -286,4 +287,93 @@ func (f *DefaultHTTPFetcher) GetBaseURL() string {
 // SetBaseURL 设置基础URL
 func (f *DefaultHTTPFetcher) SetBaseURL(baseURL string) {
 	f.baseURL = strings.TrimRight(baseURL, "/")
+}
+
+// OnlinePostFetcher 在线帖子获取器
+type OnlinePostFetcher struct {
+	httpFetcher   HTTPFetcher
+	htmlParser    HTMLParser
+	selectors     *HTMLSelectors
+	dataExtractor DataExtractor
+}
+
+// NewOnlinePostFetcher 创建新的在线帖子获取器
+func NewOnlinePostFetcher(httpFetcher HTTPFetcher, htmlParser HTMLParser, selectors *HTMLSelectors) *OnlinePostFetcher {
+	return &OnlinePostFetcher{
+		httpFetcher:   httpFetcher,
+		htmlParser:    htmlParser,
+		selectors:     selectors,
+		dataExtractor: NewDataExtractor(selectors),
+	}
+}
+
+// FetchPost 获取指定TID的帖子
+func (f *OnlinePostFetcher) FetchPost(tid string) (*Post, error) {
+	// 获取HTML内容
+	htmlContent, err := f.httpFetcher.FetchPost(tid)
+	if err != nil {
+		return nil, fmt.Errorf("获取帖子HTML失败: %v", err)
+	}
+
+	// 解析HTML
+	if err := f.htmlParser.LoadFromString(htmlContent); err != nil {
+		return nil, fmt.Errorf("解析HTML失败: %v", err)
+	}
+
+	// 提取帖子数据
+	post, err := f.dataExtractor.ExtractPost(f.htmlParser)
+	if err != nil {
+		return nil, fmt.Errorf("提取帖子数据失败: %v", err)
+	}
+
+	// 设置TID
+	post.TID = tid
+
+	return post, nil
+}
+
+// LocalPostFetcher 本地帖子获取器
+type LocalPostFetcher struct {
+	htmlParser    HTMLParser
+	selectors     *HTMLSelectors
+	dataExtractor DataExtractor
+}
+
+// NewLocalPostFetcher 创建新的本地帖子获取器
+func NewLocalPostFetcher(htmlParser HTMLParser, selectors *HTMLSelectors) *LocalPostFetcher {
+	return &LocalPostFetcher{
+		htmlParser:    htmlParser,
+		selectors:     selectors,
+		dataExtractor: NewDataExtractor(selectors),
+	}
+}
+
+// FetchPost 从本地文件获取帖子
+func (f *LocalPostFetcher) FetchPost(filepath string) (*Post, error) {
+	// 加载HTML文件
+	if err := f.htmlParser.LoadFromFile(filepath); err != nil {
+		return nil, fmt.Errorf("加载HTML文件失败: %v", err)
+	}
+
+	// 提取帖子数据
+	post, err := f.dataExtractor.ExtractPost(f.htmlParser)
+	if err != nil {
+		return nil, fmt.Errorf("提取帖子数据失败: %v", err)
+	}
+
+	// 从文件名中提取TID
+	post.TID = f.extractTIDFromFilename(filepath)
+
+	return post, nil
+}
+
+// extractTIDFromFilename 从文件名中提取TID
+func (f *LocalPostFetcher) extractTIDFromFilename(filepath string) string {
+	// 从文件名中提取TID，例如：read.php?tid-2636739.html
+	re := regexp.MustCompile(`tid-(\d+)\.html`)
+	matches := re.FindStringSubmatch(filepath)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+	return "unknown"
 }

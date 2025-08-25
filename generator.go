@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -76,22 +77,71 @@ func (g *DefaultMarkdownGenerator) GenerateMarkdown(post *Post) (string, error) 
 	return md.String(), nil
 }
 
+// SavePost 保存帖子到指定目录结构
+func (g *DefaultMarkdownGenerator) SavePost(post *Post, baseDir string) error {
+	// 创建以TID命名的目录
+	tidDir := filepath.Join(baseDir, post.TID)
+	if err := os.MkdirAll(tidDir, 0755); err != nil {
+		return fmt.Errorf("创建目录失败: %v", err)
+	}
+
+	// 创建images和attachments子目录
+	imagesDir := filepath.Join(tidDir, "images")
+	attachmentsDir := filepath.Join(tidDir, "attachments")
+
+	if err := os.MkdirAll(imagesDir, 0755); err != nil {
+		return fmt.Errorf("创建images目录失败: %v", err)
+	}
+
+	if err := os.MkdirAll(attachmentsDir, 0755); err != nil {
+		return fmt.Errorf("创建attachments目录失败: %v", err)
+	}
+
+	// 生成Markdown内容
+	markdown, err := g.GenerateMarkdown(post)
+	if err != nil {
+		return fmt.Errorf("生成Markdown失败: %v", err)
+	}
+
+	// 保存post.md文件
+	postFile := filepath.Join(tidDir, "post.md")
+	if err := os.WriteFile(postFile, []byte(markdown), 0644); err != nil {
+		return fmt.Errorf("保存post.md失败: %v", err)
+	}
+
+	// 保存元数据
+	metadata, err := post.ToJSON()
+	if err != nil {
+		return fmt.Errorf("生成元数据失败: %v", err)
+	}
+
+	metadataFile := filepath.Join(tidDir, "metadata.json")
+	if err := os.WriteFile(metadataFile, []byte(metadata), 0644); err != nil {
+		return fmt.Errorf("保存metadata.json失败: %v", err)
+	}
+
+	// TODO: 复制图片和附件文件到对应的目录
+	// 这部分需要在downloader.go中实现相应的文件复制功能
+
+	return nil
+}
+
 // writePostInfo 写入帖子基本信息
 func (g *DefaultMarkdownGenerator) writePostInfo(md *strings.Builder, post *Post) {
 	md.WriteString("**基本信息**\n\n")
-	
+
 	if post.Forum != "" {
 		md.WriteString(fmt.Sprintf("- **版块**: %s\n", g.escapeMarkdown(post.Forum)))
 	}
-	
+
 	if post.URL != "" {
 		md.WriteString(fmt.Sprintf("- **原帖链接**: <%s>\n", post.URL))
 	}
-	
+
 	if !post.CreatedAt.IsZero() {
 		md.WriteString(fmt.Sprintf("- **创建时间**: %s\n", post.CreatedAt.Format("2006-01-02 15:04:05")))
 	}
-	
+
 	md.WriteString(fmt.Sprintf("- **总楼层数**: %d\n", post.TotalFloors))
 	md.WriteString("\n")
 }
@@ -153,10 +203,10 @@ func (g *DefaultMarkdownGenerator) FormatAuthor(author *Author) string {
 
 	var md strings.Builder
 	md.WriteString("**作者信息**:\n\n")
-	
+
 	// 用户名
 	md.WriteString(fmt.Sprintf("- **用户名**: %s", g.escapeMarkdown(author.Username)))
-	
+
 	// UID
 	if author.UID != "" {
 		md.WriteString(fmt.Sprintf(" (UID: %s)", author.UID))
@@ -206,7 +256,7 @@ func (g *DefaultMarkdownGenerator) FormatImages(images []Image) string {
 		} else {
 			// 内联式图片
 			imgPath := img.URL
-			
+
 			// 如果有本地路径，优先使用本地路径
 			if img.LocalPath != "" {
 				// 转换为相对路径
@@ -224,7 +274,7 @@ func (g *DefaultMarkdownGenerator) FormatImages(images []Image) string {
 			if img.FileSize > 0 {
 				md.WriteString(fmt.Sprintf(" *(%s)*", g.formatFileSize(img.FileSize)))
 			}
-			
+
 			if img.IsAttachment {
 				md.WriteString(" *(附件)*")
 			}
@@ -258,7 +308,7 @@ func (g *DefaultMarkdownGenerator) FormatAttachments(attachments []Attachment) s
 
 	for _, att := range attachments {
 		attachPath := att.URL
-		
+
 		// 如果有本地路径，优先使用本地路径
 		if att.LocalPath != "" {
 			attachPath = g.convertToRelativePath(att.LocalPath)
@@ -273,11 +323,11 @@ func (g *DefaultMarkdownGenerator) FormatAttachments(attachments []Attachment) s
 
 		// 添加文件信息
 		var info []string
-		
+
 		if att.FileSize > 0 {
 			info = append(info, g.formatFileSize(att.FileSize))
 		}
-		
+
 		if att.MimeType != "" {
 			info = append(info, att.MimeType)
 		}
@@ -328,7 +378,7 @@ func (g *DefaultMarkdownGenerator) writeFooter(md *strings.Builder, post *Post) 
 	// 统计信息
 	totalImages := len(post.MainPost.Images)
 	totalAttachments := len(post.MainPost.Attachments)
-	
+
 	for _, reply := range post.Replies {
 		totalImages += len(reply.Images)
 		totalAttachments += len(reply.Attachments)
@@ -351,18 +401,18 @@ func (g *DefaultMarkdownGenerator) writeFooter(md *strings.Builder, post *Post) 
 func (g *DefaultMarkdownGenerator) formatContent(content string) string {
 	// 移除多余的空白行
 	content = strings.TrimSpace(content)
-	
+
 	// 将内容按段落分割并重新组织
 	paragraphs := strings.Split(content, "\n")
 	var formattedParagraphs []string
-	
+
 	for _, paragraph := range paragraphs {
 		paragraph = strings.TrimSpace(paragraph)
 		if paragraph != "" {
 			formattedParagraphs = append(formattedParagraphs, paragraph)
 		}
 	}
-	
+
 	return strings.Join(formattedParagraphs, "\n\n")
 }
 

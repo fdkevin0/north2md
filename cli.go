@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,25 +15,25 @@ var (
 	config *Config
 
 	// 命令行参数
-	flagTID          string
-	flagInputFile    string
-	flagOutputFile   string
-	flagCacheDir     string
-	flagBaseURL      string
-	flagCookieFile   string
-	flagNoCache      bool
-	flagNoCookie     bool
-	flagTimeout      int
+	flagTID           string
+	flagInputFile     string
+	flagOutputFile    string
+	flagCacheDir      string
+	flagBaseURL       string
+	flagCookieFile    string
+	flagNoCache       bool
+	flagNoCookie      bool
+	flagTimeout       int
 	flagMaxConcurrent int
-	flagVerbose      bool
-	flagHeaders      []string
-	
+	flagVerbose       bool
+	flagHeaders       []string
+
 	// Cookie 相关参数
-	flagCurlCommand  string
-	flagCurlFile     string
-	flagTestURL      string
-	flagOverwrite    bool
-	flagTestMode     bool
+	flagCurlCommand string
+	flagCurlFile    string
+	flagTestURL     string
+	flagOverwrite   bool
+	flagTestMode    bool
 )
 
 // rootCmd 根命令
@@ -119,7 +120,7 @@ var cookieImportCmd = &cobra.Command{
 
   # 从 curl 命令导入并立即测试
   north2md cookie import --curl="curl '...' -b '...'" --test --test-url="https://north-plus.net/read.php?tid-2625015.html"`,
-	RunE:  runCookieImport,
+	RunE: runCookieImport,
 }
 
 // cookieListCmd cookie列表命令
@@ -143,7 +144,7 @@ var cookieTestCmd = &cobra.Command{
 
   # 详细模式显示测试结果
   north2md cookie test --url="https://north-plus.net/read.php?tid-2625015.html" --verbose`,
-	RunE:  runCookieTest,
+	RunE: runCookieTest,
 }
 
 // cookieValidateCmd cookie验证命令
@@ -178,13 +179,13 @@ func init() {
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(cookieCmd)
 	configCmd.AddCommand(configInitCmd)
-	
+
 	// 添加 cookie 子命令
 	cookieCmd.AddCommand(cookieImportCmd)
 	cookieCmd.AddCommand(cookieListCmd)
 	cookieCmd.AddCommand(cookieTestCmd)
 	cookieCmd.AddCommand(cookieValidateCmd)
-	
+
 	// cookie import 命令参数
 	cookieImportCmd.Flags().StringVar(&flagCurlCommand, "curl", "", "curl 命令字符串")
 	cookieImportCmd.Flags().StringVar(&flagCurlFile, "file", "", "包含 curl 命令的文件路径")
@@ -192,7 +193,7 @@ func init() {
 	cookieImportCmd.Flags().BoolVar(&flagTestMode, "test", false, "导入后立即测试 cookie 有效性")
 	cookieImportCmd.Flags().StringVar(&flagTestURL, "test-url", "", "测试 URL（仅在 --test 模式下有效）")
 	cookieImportCmd.MarkFlagsMutuallyExclusive("curl", "file")
-	
+
 	// cookie test 命令参数
 	cookieTestCmd.Flags().StringVar(&flagTestURL, "url", "", "测试 URL")
 	cookieTestCmd.MarkFlagRequired("url")
@@ -206,70 +207,133 @@ func Execute() error {
 	return rootCmd.Execute()
 }
 
-// runExtractor 运行提取器
-func runExtractor(cmd *cobra.Command, args []string) error {
-	// 验证参数
-	if err := validateFlags(); err != nil {
-		return err
+// initConfig 初始化配置
+func initConfig() error {
+	// 更新配置参数
+	if flagTID != "" {
+		config.TID = flagTID
 	}
 
-	// 应用命令行参数到配置
-	applyFlags()
-
-	// 打印配置信息
-	if flagVerbose {
-		printConfig()
+	if flagInputFile != "" {
+		config.InputFile = flagInputFile
 	}
 
-	// 创建HTML解析器
-	parser := NewHTMLParser()
-
-	// 加载HTML内容
-	if err := loadHTML(parser); err != nil {
-		return fmt.Errorf("加载HTML失败: %v", err)
+	if flagOutputFile != "" {
+		config.OutputFile = flagOutputFile
 	}
 
-	// 创建数据提取器
-	extractor := NewDataExtractor(&config.Selectors)
-
-	// 提取帖子数据
-	fmt.Println("正在提取帖子数据...")
-	post, err := extractor.ExtractPost(parser)
-	if err != nil {
-		return fmt.Errorf("提取帖子数据失败: %v", err)
+	if flagCacheDir != "" {
+		config.CacheDir = flagCacheDir
 	}
 
-	if flagVerbose {
-		fmt.Printf("提取完成: 标题=\"%s\", 总楼层=%d\n", post.Title, post.TotalFloors)
+	if flagBaseURL != "" {
+		config.BaseURL = flagBaseURL
 	}
 
-	// 下载附件 (如果启用)
-	if !flagNoCache && config.CacheOpts.EnableCache {
-		if err := downloadAttachments(post); err != nil {
-			fmt.Printf("警告: 下载附件时发生错误: %v\n", err)
+	if flagCookieFile != "" {
+		config.HTTPOpts.CookieFile = flagCookieFile
+	}
+
+	if flagNoCache {
+		config.CacheOpts.EnableCache = false
+	}
+
+	if flagNoCookie {
+		config.HTTPOpts.EnableCookie = false
+	}
+
+	if flagTimeout > 0 {
+		config.HTTPOpts.Timeout = time.Duration(flagTimeout) * time.Second
+	}
+
+	if flagMaxConcurrent > 0 {
+		config.HTTPOpts.MaxConcurrent = flagMaxConcurrent
+	}
+
+	// 处理自定义请求头
+	for _, header := range flagHeaders {
+		parts := strings.SplitN(header, ":", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			config.HTTPOpts.CustomHeaders[key] = value
 		}
 	}
 
-	// 生成Markdown
-	fmt.Println("正在生成Markdown文档...")
-	generator := NewMarkdownGenerator(&config.MarkdownOpts)
-	markdown, err := generator.GenerateMarkdown(post)
-	if err != nil {
-		return fmt.Errorf("生成Markdown失败: %v", err)
+	return nil
+}
+
+// runExtractor 运行提取器
+func runExtractor(cmd *cobra.Command, args []string) error {
+	// 初始化配置
+	if err := initConfig(); err != nil {
+		return fmt.Errorf("初始化配置失败: %v", err)
 	}
 
-	// 保存到文件
-	if err := os.WriteFile(config.OutputFile, []byte(markdown), 0644); err != nil {
-		return fmt.Errorf("保存Markdown文件失败: %v", err)
+	// 创建HTTP客户端
+	httpClient := NewHTTPFetcher(&config.HTTPOpts, config.BaseURL)
+
+	// 创建HTML解析器
+	htmlParser := NewHTMLParser()
+
+	// 创建附件下载器
+	downloader := NewAttachmentDownloader(httpClient, &config.CacheOpts)
+
+	// 创建Markdown生成器
+	markdownGenerator := NewMarkdownGenerator(&config.MarkdownOpts)
+
+	// 获取帖子内容
+	var post *Post
+	var err error
+
+	if config.TID != "" {
+		// 在线抓取模式
+		fetcher := NewOnlinePostFetcher(httpClient, htmlParser, &config.Selectors)
+		post, err = fetcher.FetchPost(config.TID)
+		if err != nil {
+			return fmt.Errorf("抓取帖子失败: %v", err)
+		}
+	} else if config.InputFile != "" {
+		// 本地文件模式
+		fetcher := NewLocalPostFetcher(htmlParser, &config.Selectors)
+		post, err = fetcher.FetchPost(config.InputFile)
+		if err != nil {
+			return fmt.Errorf("解析本地文件失败: %v", err)
+		}
+	} else {
+		return fmt.Errorf("必须指定 --tid 或 --input 参数")
 	}
 
-	fmt.Printf("✓ Markdown文档已保存到: %s\n", config.OutputFile)
-
-	// 打印统计信息
-	if flagVerbose {
-		printStats(post)
+	// 创建输出目录
+	outputDir := filepath.Dir(config.OutputFile)
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("创建输出目录失败: %v", err)
 	}
 
+	// 获取基础目录（不包括post.md文件名）
+	baseDir := outputDir
+	if config.OutputFile != "post.md" {
+		// 如果用户指定了特定的输出文件路径，则使用其所在目录作为基础目录
+		baseDir = filepath.Dir(config.OutputFile)
+	}
+
+	// 下载附件直接到帖子目录
+	if config.CacheOpts.EnableCache {
+		fmt.Println("正在下载附件...")
+		if err := downloader.DownloadAllToPostDir(post, baseDir); err != nil {
+			fmt.Printf("警告: 下载附件时出现错误: %v\n", err)
+		}
+	}
+
+	// 使用新的目录结构保存帖子
+	fmt.Println("正在保存帖子...")
+
+	// 保存到新的目录结构
+	if err := markdownGenerator.SavePost(post, baseDir); err != nil {
+		return fmt.Errorf("保存帖子失败: %v", err)
+	}
+
+	fmt.Printf("✓ 帖子已保存到 %s/%s/\n", baseDir, post.TID)
 	return nil
 }
 
@@ -316,7 +380,7 @@ func runDownloader(cmd *cobra.Command, args []string) error {
 // runConfigInit 初始化配置文件
 func runConfigInit(cmd *cobra.Command, args []string) error {
 	configFile := "config.json"
-	
+
 	// 检查配置文件是否已存在
 	if _, err := os.Stat(configFile); err == nil {
 		fmt.Printf("配置文件 %s 已存在，是否覆盖? (y/N): ", configFile)
@@ -330,7 +394,7 @@ func runConfigInit(cmd *cobra.Command, args []string) error {
 
 	// 创建默认配置
 	defaultConfig := NewDefaultConfig()
-	
+
 	// 保存配置文件
 	configJSON, err := defaultConfig.ToJSON()
 	if err != nil {
@@ -389,7 +453,7 @@ func applyFlags() {
 		if config.HTTPOpts.CustomHeaders == nil {
 			config.HTTPOpts.CustomHeaders = make(map[string]string)
 		}
-		
+
 		for _, header := range flagHeaders {
 			parts := strings.SplitN(header, ":", 2)
 			if len(parts) == 2 {
@@ -410,10 +474,10 @@ func loadHTML(parser HTMLParser) error {
 	} else {
 		// 从在线抓取
 		fmt.Printf("正在抓取在线帖子: TID=%s\n", config.TID)
-		
+
 		// 创建HTTP抓取器
 		fetcher := NewHTTPFetcher(&config.HTTPOpts, config.BaseURL)
-		
+
 		// 抓取HTML内容
 		html, err := fetcher.FetchPost(config.TID)
 		if err != nil {
@@ -421,7 +485,7 @@ func loadHTML(parser HTMLParser) error {
 		}
 
 		// 设置基础URL
-		postURL := fmt.Sprintf("%s/read.php?tid-%s.html", 
+		postURL := fmt.Sprintf("%s/read.php?tid-%s.html",
 			strings.TrimRight(config.BaseURL, "/"), config.TID)
 		parser.SetBaseURL(postURL)
 
@@ -436,13 +500,13 @@ func downloadAttachments(post *Post) error {
 	}
 
 	fmt.Println("正在下载附件...")
-	
+
 	// 创建HTTP抓取器
 	fetcher := NewHTTPFetcher(&config.HTTPOpts, config.BaseURL)
-	
+
 	// 创建附件下载器
 	downloader := NewAttachmentDownloader(fetcher, &config.CacheOpts)
-	
+
 	// 下载所有附件
 	if err := downloader.DownloadAll(post, config.CacheDir); err != nil {
 		return err
@@ -450,7 +514,7 @@ func downloadAttachments(post *Post) error {
 
 	// 打印下载统计
 	total, downloaded, totalSize := downloader.GetDownloadStats(config.CacheDir)
-	fmt.Printf("✓ 附件下载完成: %d/%d 个文件, 总大小: %s\n", 
+	fmt.Printf("✓ 附件下载完成: %d/%d 个文件, 总大小: %s\n",
 		downloaded, total, formatFileSize(totalSize))
 
 	return nil
@@ -475,7 +539,7 @@ func printConfig() {
 func printStats(post *Post) {
 	totalImages := len(post.MainPost.Images)
 	totalAttachments := len(post.MainPost.Attachments)
-	
+
 	for _, reply := range post.Replies {
 		totalImages += len(reply.Images)
 		totalAttachments += len(reply.Attachments)
@@ -565,7 +629,7 @@ func runCookieImport(cmd *cobra.Command, args []string) error {
 	totalCookies := 0
 	for i, curlCmd := range commands {
 		fmt.Printf("正在处理第 %d 个 curl 命令: %s\n", i+1, curlCmd.URL)
-		
+
 		cookies, err := parser.ExtractCookies(curlCmd)
 		if err != nil {
 			fmt.Printf("警告: 提取 cookies 失败: %v\n", err)
@@ -576,7 +640,7 @@ func runCookieImport(cmd *cobra.Command, args []string) error {
 			cookieManager.AddCookie(cookie)
 			totalCookies++
 			if flagVerbose {
-				fmt.Printf("  + 添加 Cookie: %s=%s (域名: %s)\n", 
+				fmt.Printf("  + 添加 Cookie: %s=%s (域名: %s)\n",
 					cookie.Name, cookie.Value[:min(20, len(cookie.Value))], cookie.Domain)
 			}
 		}

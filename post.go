@@ -7,6 +7,7 @@ import (
 
 // Post 表示一个完整的论坛帖子
 type Post struct {
+	TID         string      `json:"tid"`          // 帖子ID
 	Title       string      `json:"title"`        // 帖子标题
 	URL         string      `json:"url"`          // 帖子链接
 	Forum       string      `json:"forum"`        // 版块名称
@@ -51,7 +52,7 @@ type Image struct {
 
 // Attachment 表示附件信息
 type Attachment struct {
-	URL        string `json:"url"`         // 原始URL
+	URL        string `json:"url"`        // 原始URL
 	LocalPath  string `json:"local_path"` // 本地缓存路径
 	FileName   string `json:"file_name"`  // 文件名
 	FileSize   int64  `json:"file_size"`  // 文件大小
@@ -70,7 +71,7 @@ type CookieEntry struct {
 	Secure   bool      `json:"secure"`    // 是否只在HTTPS下传输
 	HttpOnly bool      `json:"http_only"` // 是否仅HTTP可访问
 	SameSite string    `json:"same_site"` // SameSite属性
-	
+
 	// 新增字段
 	Source     string    `json:"source"`      // Cookie来源 (curl, browser, manual)
 	ImportedAt time.Time `json:"imported_at"` // 导入时间
@@ -79,8 +80,8 @@ type CookieEntry struct {
 
 // CookieJar Cookie管理器
 type CookieJar struct {
-	Cookies     []CookieEntry `json:"cookies"`     // Cookie列表
-	FilePath    string        `json:"file_path"`   // 存储文件路径
+	Cookies     []CookieEntry `json:"cookies"`      // Cookie列表
+	FilePath    string        `json:"file_path"`    // 存储文件路径
 	LastUpdated time.Time     `json:"last_updated"` // 最后更新时间
 }
 
