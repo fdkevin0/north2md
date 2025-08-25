@@ -3,9 +3,11 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -13,6 +15,7 @@ import (
 // HTTPFetcher HTTP抓取器接口
 type HTTPFetcher interface {
 	FetchPost(tid string) (string, error)
+	FetchPostWithPage(tid string, page int) (string, error)
 	FetchWithRetry(url string) (*http.Response, error)
 	SetHeaders(headers map[string]string)
 	SetTimeout(timeout time.Duration)
@@ -70,6 +73,34 @@ func (f *DefaultHTTPFetcher) buildPostURL(tid string) string {
 	// 确保baseURL以/结尾
 	baseURL := strings.TrimRight(f.baseURL, "/")
 	return fmt.Sprintf("%s/read.php?tid-%s.html", baseURL, tid)
+}
+
+// FetchPostWithPage 抓取指定TID和页码的帖子内容
+func (f *DefaultHTTPFetcher) FetchPostWithPage(tid string, page int) (string, error) {
+	if tid == "" {
+		return "", fmt.Errorf("TID不能为空")
+	}
+
+	log.Printf("正在抓取帖子：%s, page: %d", tid, page)
+
+	// 构建完整的URL，包含页码参数
+	postURL := f.buildPostURLWithPage(tid, page)
+
+	return f.FetchURL(postURL)
+}
+
+// buildPostURLWithPage 构建带页码的帖子URL
+func (f *DefaultHTTPFetcher) buildPostURLWithPage(tid string, page int) string {
+	// 确保baseURL以/结尾
+	baseURL := strings.TrimRight(f.baseURL, "/")
+
+	// 如果是第一页，使用原始URL格式
+	if page <= 1 {
+		return fmt.Sprintf("%s/read.php?tid-%s.html", baseURL, tid)
+	}
+
+	// 对于其他页，添加页码参数
+	return fmt.Sprintf("%s/read.php?tid-%s-page-%d.html", baseURL, tid, page)
 }
 
 // FetchURL 抓取指定URL的内容
@@ -307,29 +338,114 @@ func NewOnlinePostFetcher(httpFetcher HTTPFetcher, htmlParser HTMLParser, select
 	}
 }
 
-// FetchPost 获取指定TID的帖子
+// FetchPost 获取指定TID的帖子（自动处理分页）
 func (f *OnlinePostFetcher) FetchPost(tid string) (*Post, error) {
-	// 获取HTML内容
-	htmlContent, err := f.httpFetcher.FetchPost(tid)
+	// 首先获取第一页以确定总页数
+	firstPageHTML, err := f.httpFetcher.FetchPost(tid)
 	if err != nil {
-		return nil, fmt.Errorf("获取帖子HTML失败: %v", err)
+		return nil, fmt.Errorf("获取帖子第一页失败: %v", err)
 	}
 
-	// 解析HTML
-	if err := f.htmlParser.LoadFromString(htmlContent); err != nil {
-		return nil, fmt.Errorf("解析HTML失败: %v", err)
+	// 解析第一页
+	if err := f.htmlParser.LoadFromString(firstPageHTML); err != nil {
+		return nil, fmt.Errorf("解析第一页HTML失败: %v", err)
 	}
 
-	// 提取帖子数据
-	post, err := f.dataExtractor.ExtractPost(f.htmlParser)
+	// 尝试从第一页获取总页数
+	totalPages := f.extractTotalPages(f.htmlParser)
+	if totalPages <= 0 {
+		// 如果无法提取总页数，默认为1页
+		totalPages = 1
+	}
+
+	// 如果只有一页，直接返回
+	if totalPages == 1 {
+		// 提取帖子数据
+		post, err := f.dataExtractor.ExtractPost(f.htmlParser)
+		if err != nil {
+			return nil, fmt.Errorf("提取帖子数据失败: %v", err)
+		}
+
+		// 设置TID
+		post.TID = tid
+
+		return post, nil
+	}
+
+	// 处理多页情况
+	// 收集所有页面的解析器
+	var parsers []HTMLParser
+
+	// 添加第一页解析器
+	parsers = append(parsers, f.htmlParser)
+
+	// 获取剩余页面
+	for page := 2; page <= totalPages; page++ {
+		pageHTML, err := f.httpFetcher.FetchPostWithPage(tid, page)
+		if err != nil {
+			fmt.Printf("获取帖子第%d页失败: %v\n", page, err)
+			continue
+		}
+
+		// 创建新的解析器实例
+		pageParser := NewHTMLParser()
+		if err := pageParser.LoadFromString(pageHTML); err != nil {
+			fmt.Printf("解析第%d页HTML失败: %v\n", page, err)
+			continue
+		}
+
+		parsers = append(parsers, pageParser)
+	}
+
+	// 从所有页面提取数据
+	post, err := f.dataExtractor.ExtractPostFromMultiplePages(parsers)
 	if err != nil {
-		return nil, fmt.Errorf("提取帖子数据失败: %v", err)
+		return nil, fmt.Errorf("从多页提取帖子数据失败: %v", err)
 	}
 
 	// 设置TID
 	post.TID = tid
 
 	return post, nil
+}
+
+// extractTotalPages 从页面中提取总页数
+func (f *OnlinePostFetcher) extractTotalPages(parser HTMLParser) int {
+	// 查找包含页数信息的元素
+	// 根据示例HTML，页数信息在 "Pages: 1/8" 格式中
+	pagesElement := parser.FindElement(".pagesone")
+	if pagesElement.Length() > 0 {
+		text := pagesElement.Text()
+		// 使用正则表达式提取总页数
+		re := regexp.MustCompile(`Pages:\s*\d+/(\d+)`)
+		matches := re.FindStringSubmatch(text)
+		if len(matches) > 1 {
+			if totalPages, err := strconv.Atoi(matches[1]); err == nil {
+				return totalPages
+			}
+		}
+	}
+
+	// 如果上面的方法失败，尝试查找页面链接中的最大页码
+	pageLinks := parser.FindElements("a[href*='page-']")
+	maxPage := 0
+	pageLinks.Each(func(i int, element Element) {
+		href, exists := element.Attr("href")
+		if !exists {
+			return
+		}
+
+		// 使用正则表达式提取页码
+		re := regexp.MustCompile(`page-(\d+)`)
+		matches := re.FindStringSubmatch(href)
+		if len(matches) > 1 {
+			if page, err := strconv.Atoi(matches[1]); err == nil && page > maxPage {
+				maxPage = page
+			}
+		}
+	})
+
+	return maxPage
 }
 
 // LocalPostFetcher 本地帖子获取器

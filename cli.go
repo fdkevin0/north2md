@@ -592,15 +592,6 @@ func runCookieTestInternal(testURL string, cookieManager *DefaultCookieManager) 
 	return nil
 }
 
-// 工具函数
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func getBoolDisplay(b bool) string {
 	if b {
 		return "✓ 是"

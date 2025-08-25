@@ -11,6 +11,7 @@ import (
 // DataExtractor 数据提取器接口
 type DataExtractor interface {
 	ExtractPost(parser HTMLParser) (*Post, error)
+	ExtractPostFromMultiplePages(parsers []HTMLParser) (*Post, error)
 	ExtractMainPost(parser HTMLParser) (*PostEntry, error)
 	ExtractReplies(parser HTMLParser) ([]PostEntry, error)
 	ExtractAuthor(element Element) (*Author, error)
@@ -75,6 +76,36 @@ func (e *DefaultDataExtractor) ExtractPost(parser HTMLParser) (*Post, error) {
 	return post, nil
 }
 
+// ExtractPostFromMultiplePages 从多个页面提取完整的帖子数据
+func (e *DefaultDataExtractor) ExtractPostFromMultiplePages(parsers []HTMLParser) (*Post, error) {
+	if len(parsers) == 0 {
+		return nil, fmt.Errorf("没有提供页面解析器")
+	}
+
+	// 使用第一页的数据初始化帖子
+	post, err := e.ExtractPost(parsers[0])
+	if err != nil {
+		return nil, fmt.Errorf("提取第一页数据失败: %v", err)
+	}
+
+	// 从后续页面提取回复并追加到帖子中
+	for i := 1; i < len(parsers); i++ {
+		replies, err := e.ExtractReplies(parsers[i])
+		if err != nil {
+			fmt.Printf("提取第%d页回复失败: %v\n", i+1, err)
+			continue
+		}
+
+		// 追加回复
+		post.Replies = append(post.Replies, replies...)
+
+		// 更新总楼层数
+		post.TotalFloors = 1 + len(post.Replies) // 主楼 + 回复数
+	}
+
+	return post, nil
+}
+
 // ExtractMainPost 提取主楼内容
 func (e *DefaultDataExtractor) ExtractMainPost(parser HTMLParser) (*PostEntry, error) {
 	// 查找第一个帖子表格
@@ -93,11 +124,11 @@ func (e *DefaultDataExtractor) ExtractReplies(parser HTMLParser) ([]PostEntry, e
 
 	// 查找所有帖子表格，跳过第一个（主楼）
 	postTables := parser.FindElements(e.selectors.PostTable)
-	
+
 	for i := 1; i < postTables.Length(); i++ {
 		table := postTables.Eq(i)
 		floorNumber := e.generateFloorNumber(i)
-		
+
 		entry, err := e.extractPostEntry(table, floorNumber, parser.GetBaseURL())
 		if err != nil {
 			fmt.Printf("提取第%d楼失败: %v\n", i, err)
@@ -202,7 +233,7 @@ func (e *DefaultDataExtractor) ExtractImages(element Element, baseURL string) ([
 
 	// 查找所有图片
 	imgElements := element.Find("img")
-	
+
 	imgElements.Each(func(i int, img Element) {
 		src, exists := img.Attr("src")
 		if !exists || src == "" {
@@ -238,7 +269,7 @@ func (e *DefaultDataExtractor) ExtractAttachments(element Element, baseURL strin
 
 	// 查找附件链接
 	attachElements := element.Find("a[href*=\"attachment\"], a[href*=\"download\"]")
-	
+
 	attachElements.Each(func(i int, link Element) {
 		href, exists := link.Attr("href")
 		if !exists || href == "" {
@@ -275,7 +306,7 @@ func (e *DefaultDataExtractor) ExtractAttachments(element Element, baseURL strin
 func (e *DefaultDataExtractor) extractForumName(element Element) string {
 	// 从导航链接中提取版块名称
 	text := element.Text()
-	
+
 	// 通常版块名称在导航的最后一个链接中
 	parts := strings.Split(text, "»")
 	if len(parts) > 1 {
@@ -296,7 +327,7 @@ func (e *DefaultDataExtractor) generateFloorNumber(index int) string {
 // parsePostTime 解析发帖时间
 func (e *DefaultDataExtractor) parsePostTime(timeText string) time.Time {
 	timeText = strings.TrimSpace(timeText)
-	
+
 	// 尝试多种时间格式
 	formats := []string{
 		"2006-1-2 15:04:05",
@@ -399,8 +430,8 @@ func (e *DefaultDataExtractor) isAttachmentImage(img Element) bool {
 	parent := img.Parent()
 	for i := 0; i < 3 && parent.Length() > 0; i++ {
 		parentHTML := strings.ToLower(parent.HTML())
-		if strings.Contains(parentHTML, "attachment") || 
-		   strings.Contains(parentHTML, "attach") {
+		if strings.Contains(parentHTML, "attachment") ||
+			strings.Contains(parentHTML, "attach") {
 			return true
 		}
 		parent = parent.Parent()
@@ -420,12 +451,12 @@ func (e *DefaultDataExtractor) extractFileNameFromURL(url string) string {
 	parts := strings.Split(url, "/")
 	if len(parts) > 0 {
 		filename := parts[len(parts)-1]
-		
+
 		// 去除查询参数
 		if idx := strings.Index(filename, "?"); idx != -1 {
 			filename = filename[:idx]
 		}
-		
+
 		return filename
 	}
 	return ""
@@ -461,10 +492,10 @@ func (e *DefaultDataExtractor) extractFileSize(text string) int64 {
 func (e *DefaultDataExtractor) cleanTextContent(text string) string {
 	// 移除多余的空白字符
 	text = regexp.MustCompile(`\s+`).ReplaceAllString(text, " ")
-	
+
 	// 移除前后空白
 	text = strings.TrimSpace(text)
-	
+
 	return text
 }
 
