@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/samber/lo"
 )
 
 // CurlCommand 表示解析后的 curl 命令
@@ -103,6 +105,13 @@ func (cm *DefaultCookieManager) LoadFromFile(filepath string) error {
 
 	// 清理过期Cookie
 	cm.CleanExpired()
+
+	if !lo.ContainsBy(cm.jar.Cookies, func(item CookieEntry) bool {
+		return item.Name == "eb9e6_winduser"
+	}) {
+		log.Println("not login, clear cookies")
+		cm.ClearCookies()
+	}
 
 	return nil
 }

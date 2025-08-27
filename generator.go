@@ -36,40 +36,26 @@ func NewMarkdownGenerator(options *MarkdownOptions) *DefaultMarkdownGenerator {
 func (g *DefaultMarkdownGenerator) GenerateMarkdown(post *Post) (string, error) {
 	var md strings.Builder
 
-	// 文档标题
-	md.WriteString(fmt.Sprintf("# %s\n\n", g.escapeMarkdown(post.Title)))
+	// 文档标题 (使用H2)
+	md.WriteString(fmt.Sprintf("## %s\n\n", g.escapeMarkdown(post.Title)))
 
-	// 帖子基本信息
-	g.writePostInfo(&md, post)
+	// 归属信息
+	md.WriteString("Made by north2md (c) fdkevin [GitHub Repo](https://github.com/fdkevin0/north2md)\n\n")
 
-	// 目录 (如果启用)
-	if g.options.TableOfContents || g.options.IncludeTOC {
-		toc := g.GenerateTableOfContents(post)
-		if toc != "" {
-			md.WriteString("## 目录\n\n")
-			md.WriteString(toc)
-			md.WriteString("\n")
-		}
+	// 热门回复 (如果有回复)
+	if len(post.Replies) > 0 {
+		g.writePopularReplies(&md, post)
 	}
 
-	md.WriteString("---\n\n")
+	md.WriteString("----\n\n")
 
 	// 主楼内容
-	md.WriteString("## 主楼 (GF)\n\n")
-	md.WriteString(g.FormatPost(&post.MainPost))
-	md.WriteString("\n")
+	g.writeMainPost(&md, post)
 
 	// 回复内容
 	if len(post.Replies) > 0 {
-		md.WriteString("## 回复\n\n")
 		for i, reply := range post.Replies {
-			if g.options.FloorNumbering {
-				md.WriteString(fmt.Sprintf("### %s楼\n\n", reply.Floor))
-			} else {
-				md.WriteString(fmt.Sprintf("### 回复 %d\n\n", i+1))
-			}
-			md.WriteString(g.FormatPost(&reply))
-			md.WriteString("\n")
+			g.writeReplyPost(&md, reply, i+1)
 		}
 	}
 
@@ -125,24 +111,91 @@ func (g *DefaultMarkdownGenerator) SavePost(post *Post, baseDir string) error {
 	return nil
 }
 
-// writePostInfo 写入帖子基本信息
-func (g *DefaultMarkdownGenerator) writePostInfo(md *strings.Builder, post *Post) {
-	md.WriteString("**基本信息**\n\n")
+// writePopularReplies 写入热门回复部分
+func (g *DefaultMarkdownGenerator) writePopularReplies(md *strings.Builder, post *Post) {
+	md.WriteString("##### 热门回复\n\n")
 
-	if post.Forum != "" {
-		fmt.Fprintf(md, "- **版块**: %s\n", g.escapeMarkdown(post.Forum))
+	for i, reply := range post.Replies {
+		if i >= 10 { // 只显示前10个热门回复
+			break
+		}
+
+		// 生成楼层链接和文本
+		floorText := fmt.Sprintf("%s楼", reply.Floor)
+
+		// 提取回复内容的前50个字符作为预览
+		preview := strings.TrimSpace(reply.Content)
+		// 移除换行符，创建单行预览
+		preview = strings.ReplaceAll(preview, "\n", " ")
+		if len(preview) > 50 {
+			preview = preview[:50] + "..."
+		}
+
+		fmt.Fprintf(md, "- [%s](#pid%s): %s\n", floorText, reply.PostID, g.escapeMarkdown(preview))
 	}
-
-	if post.URL != "" {
-		fmt.Fprintf(md, "- **原帖链接**: <%s>\n", post.URL)
-	}
-
-	if !post.CreatedAt.IsZero() {
-		fmt.Fprintf(md, "- **创建时间**: %s\n", post.CreatedAt.Format("2006-01-02 15:04:05"))
-	}
-
-	fmt.Fprintf(md, "- **总楼层数**: %d\n", post.TotalFloors)
 	md.WriteString("\n")
+}
+
+// writeMainPost 写入主楼内容
+func (g *DefaultMarkdownGenerator) writeMainPost(md *strings.Builder, post *Post) {
+	// 主楼使用特殊的格式化方式
+	g.writePostWithComplexHeader(md, post.MainPost, 0, "0")
+	md.WriteString("\n")
+}
+
+// writeReplyPost 写入回复楼层内容
+func (g *DefaultMarkdownGenerator) writeReplyPost(md *strings.Builder, reply PostEntry, index int) {
+	g.writePostWithComplexHeader(md, reply, index, reply.Floor)
+	md.WriteString("\n")
+}
+
+// writePostWithComplexHeader 使用复杂标题格式写入帖子
+func (g *DefaultMarkdownGenerator) writePostWithComplexHeader(md *strings.Builder, entry PostEntry, index int, floor string) {
+	// 复杂标题格式
+	floorDisplay := floor
+	if floor == "0" {
+		floorDisplay = "0"
+	}
+
+	// 构建复杂的span标题
+	header := fmt.Sprintf("##### <span id=\"pid%s\">%s.[%d] \\<pid:%s\\> %s by UID:%s(%s)</span>",
+		entry.PostID,
+		floorDisplay,
+		index,
+		entry.PostID,
+		entry.PostTime.Format("2006-01-02 15:04:05"),
+		entry.Author.UID,
+		entry.Author.Username)
+
+	md.WriteString(header)
+	md.WriteString("\n\n")
+
+	// 写入内容
+	if entry.Content != "" {
+		content := g.formatContent(entry.Content)
+		md.WriteString(content)
+		md.WriteString("\n\n")
+	}
+
+	// 图片
+	if g.options.IncludeImages && len(entry.Images) > 0 {
+		images := g.FormatImages(entry.Images)
+		if images != "" {
+			md.WriteString("**图片**:\n\n")
+			md.WriteString(images)
+			md.WriteString("\n")
+		}
+	}
+
+	// 附件
+	if len(entry.Attachments) > 0 {
+		attachments := g.FormatAttachments(entry.Attachments)
+		if attachments != "" {
+			md.WriteString("**附件**:\n\n")
+			md.WriteString(attachments)
+			md.WriteString("\n")
+		}
+	}
 }
 
 // FormatPost 格式化单个楼层内容
@@ -345,33 +398,16 @@ func (g *DefaultMarkdownGenerator) FormatAttachments(attachments []Attachment) s
 	return md.String()
 }
 
-// GenerateTableOfContents 生成目录
+// GenerateTableOfContents 生成目录 (在新格式中不使用)
 func (g *DefaultMarkdownGenerator) GenerateTableOfContents(post *Post) string {
-	var md strings.Builder
-
-	// 主楼
-	md.WriteString("- [主楼 (GF)](#主楼-gf)\n")
-
-	// 回复
-	if len(post.Replies) > 0 {
-		md.WriteString("- [回复](#回复)\n")
-		for i, reply := range post.Replies {
-			if g.options.FloorNumbering {
-				floorLink := strings.ToLower(strings.ReplaceAll(reply.Floor, "F", "f"))
-				md.WriteString(fmt.Sprintf("  - [%s楼](#%s楼)\n", reply.Floor, floorLink))
-			} else {
-				md.WriteString(fmt.Sprintf("  - [回复 %d](#回复-%d)\n", i+1, i+1))
-			}
-		}
-	}
-
-	return md.String()
+	// 新格式不使用传统的目录，返回空字符串
+	return ""
 }
 
 // writeFooter 写入文档尾部信息
 func (g *DefaultMarkdownGenerator) writeFooter(md *strings.Builder, post *Post) {
 	md.WriteString("---\n\n")
-	md.WriteString("*本文档由 HTML数据提取器 自动生成*\n\n")
+	md.WriteString("*本文档由 ngapost2md 自动生成*\n\n")
 	fmt.Fprintf(md, "*生成时间: %s*\n", time.Now().Format("2006-01-02 15:04:05"))
 
 	// 统计信息
@@ -447,7 +483,7 @@ func (g *DefaultMarkdownGenerator) escapeMarkdown(text string) string {
 // convertToRelativePath 将绝对路径转换为相对路径
 func (g *DefaultMarkdownGenerator) convertToRelativePath(absolutePath string) string {
 	// 简单地使用文件名，或者根据需要实现更复杂的相对路径逻辑
-	return filepath.Base(absolutePath)
+	return fmt.Sprintf("images/%s", filepath.Base(absolutePath))
 }
 
 // formatFileSize 格式化文件大小
