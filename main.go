@@ -6,8 +6,6 @@ import (
 )
 
 func main() {
-	initCommand()
-
 	// 执行命令行程序
 	if err := Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "错误: %v\n", err)

@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
 // HTTPFetcher 默认HTTP抓取器实现
@@ -313,21 +315,23 @@ func (f *OnlinePostFetcher) extractTotalPages(parser *HTMLParser) int {
 	// 如果上面的方法失败，尝试查找页面链接中的最大页码
 	pageLinks := parser.FindElements("a[href*='page-']")
 	maxPage := 0
-	pageLinks.Each(func(i int, element Element) {
-		href, exists := element.Attr("href")
-		if !exists {
-			return
-		}
-
-		// 使用正则表达式提取页码
-		re := regexp.MustCompile(`page-(\d+)`)
-		matches := re.FindStringSubmatch(href)
-		if len(matches) > 1 {
-			if page, err := strconv.Atoi(matches[1]); err == nil && page > maxPage {
-				maxPage = page
+	if pageLinks != nil {
+		pageLinks.Each(func(i int, element *goquery.Selection) {
+			href, exists := element.Attr("href")
+			if !exists {
+				return
 			}
-		}
-	})
+
+			// 使用正则表达式提取页码
+			re := regexp.MustCompile(`page-(\d+)`)
+			matches := re.FindStringSubmatch(href)
+			if len(matches) > 1 {
+				if page, err := strconv.Atoi(matches[1]); err == nil && page > maxPage {
+					maxPage = page
+				}
+			}
+		})
+	}
 
 	return maxPage
 }
