@@ -2,12 +2,15 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
+	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
+	"github.com/JohannesKaufmann/html-to-markdown/v2/converter"
 )
 
 // MarkdownGenerator Markdown生成器
@@ -160,137 +163,21 @@ func (g *MarkdownGenerator) writePostWithComplexHeader(md *strings.Builder, entr
 	md.WriteString(header)
 	md.WriteString("\n\n")
 
-	// 写入内容
-	if entry.Content != "" {
+	if entry.HTMLContent != "" {
+		markdown, err := htmltomarkdown.ConvertString(entry.HTMLContent,
+			converter.WithDomain("https://north-plus.net/"),
+		)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		md.WriteString(markdown)
+		md.WriteString("\n\n")
+	} else if entry.Content != "" {
+		// 写入内容
 		content := g.formatContent(entry.Content)
 		md.WriteString(content)
 		md.WriteString("\n\n")
 	}
-
-	// 图片
-	if g.options.IncludeImages && len(entry.Images) > 0 {
-		images := g.FormatImages(entry.Images)
-		if images != "" {
-			md.WriteString("**图片**:\n\n")
-			md.WriteString(images)
-			md.WriteString("\n")
-		}
-	}
-
-	// 附件
-	if len(entry.Attachments) > 0 {
-		attachments := g.FormatAttachments(entry.Attachments)
-		if attachments != "" {
-			md.WriteString("**附件**:\n\n")
-			md.WriteString(attachments)
-			md.WriteString("\n")
-		}
-	}
-}
-
-// FormatImages 格式化图片列表
-func (g *MarkdownGenerator) FormatImages(images []Image) string {
-	if len(images) == 0 {
-		return ""
-	}
-
-	var md strings.Builder
-
-	for i, img := range images {
-		if g.options.ImageStyle == "reference" {
-			// 引用式图片
-			md.WriteString(fmt.Sprintf("![image%d][img%d]\n\n", i+1, i+1))
-		} else {
-			// 内联式图片
-			imgPath := img.URL
-
-			// 如果有本地路径，优先使用本地路径
-			if img.LocalPath != "" {
-				// 转换为相对路径
-				imgPath = g.convertToRelativePath(img.LocalPath)
-			}
-
-			alt := fmt.Sprintf("image%d", i+1)
-			if img.Alt != "" {
-				alt = g.escapeMarkdown(img.Alt)
-			}
-
-			md.WriteString(fmt.Sprintf("![%s](%s)", alt, imgPath))
-
-			// 添加图片信息
-			if img.FileSize > 0 {
-				md.WriteString(fmt.Sprintf(" *(%s)*", g.formatFileSize(img.FileSize)))
-			}
-
-			if img.IsAttachment {
-				md.WriteString(" *(附件)*")
-			}
-
-			md.WriteString("\n\n")
-		}
-	}
-
-	// 如果使用引用式，添加引用定义
-	if g.options.ImageStyle == "reference" {
-		md.WriteString("\n")
-		for i, img := range images {
-			imgPath := img.URL
-			if img.LocalPath != "" {
-				imgPath = g.convertToRelativePath(img.LocalPath)
-			}
-			md.WriteString(fmt.Sprintf("[img%d]: %s\n", i+1, imgPath))
-		}
-	}
-
-	return md.String()
-}
-
-// FormatAttachments 格式化附件列表
-func (g *MarkdownGenerator) FormatAttachments(attachments []Attachment) string {
-	if len(attachments) == 0 {
-		return ""
-	}
-
-	var md strings.Builder
-
-	for _, att := range attachments {
-		attachPath := att.URL
-
-		// 如果有本地路径，优先使用本地路径
-		if att.LocalPath != "" {
-			attachPath = g.convertToRelativePath(att.LocalPath)
-		}
-
-		fileName := att.FileName
-		if fileName == "" {
-			fileName = "attachment"
-		}
-
-		md.WriteString(fmt.Sprintf("- [%s](%s)", g.escapeMarkdown(fileName), attachPath))
-
-		// 添加文件信息
-		var info []string
-
-		if att.FileSize > 0 {
-			info = append(info, g.formatFileSize(att.FileSize))
-		}
-
-		if att.MimeType != "" {
-			info = append(info, att.MimeType)
-		}
-
-		if len(info) > 0 {
-			md.WriteString(fmt.Sprintf(" *(%s)*", strings.Join(info, ", ")))
-		}
-
-		if att.Downloaded {
-			md.WriteString(" ✓")
-		}
-
-		md.WriteString("\n")
-	}
-
-	return md.String()
 }
 
 // writeFooter 写入文档尾部信息
@@ -318,8 +205,6 @@ func (g *MarkdownGenerator) writeFooter(md *strings.Builder, post *Post) {
 		}
 	}
 }
-
-// 辅助方法
 
 // formatContent 格式化帖子内容
 func (g *MarkdownGenerator) formatContent(content string) string {
@@ -367,30 +252,4 @@ func (g *MarkdownGenerator) escapeMarkdown(text string) string {
 	}
 
 	return text
-}
-
-// convertToRelativePath 将绝对路径转换为相对路径
-func (g *MarkdownGenerator) convertToRelativePath(absolutePath string) string {
-	// 简单地使用文件名，或者根据需要实现更复杂的相对路径逻辑
-	return fmt.Sprintf("images/%s", filepath.Base(absolutePath))
-}
-
-// formatFileSize 格式化文件大小
-func (g *MarkdownGenerator) formatFileSize(size int64) string {
-	const (
-		KB = 1024
-		MB = KB * 1024
-		GB = MB * 1024
-	)
-
-	switch {
-	case size >= GB:
-		return fmt.Sprintf("%.2f GB", float64(size)/GB)
-	case size >= MB:
-		return fmt.Sprintf("%.2f MB", float64(size)/MB)
-	case size >= KB:
-		return fmt.Sprintf("%.2f KB", float64(size)/KB)
-	default:
-		return fmt.Sprintf("%d B", size)
-	}
 }

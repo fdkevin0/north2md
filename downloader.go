@@ -60,107 +60,6 @@ func NewAttachmentDownloader(httpFetcher *HTTPFetcher, config *CacheOptions) *De
 	}
 }
 
-// DownloadAll 下载帖子中的所有附件
-func (d *DefaultAttachmentDownloader) DownloadAll(post *Post, cacheDir string) error {
-	if !d.config.EnableCache {
-		return nil
-	}
-
-	// 确保缓存目录存在
-	if err := d.ensureCacheDir(cacheDir); err != nil {
-		return fmt.Errorf("创建缓存目录失败: %v", err)
-	}
-
-	// 加载现有的下载元数据
-	metadata := d.loadMetadata(cacheDir)
-
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var errors []error
-
-	// 下载主楼的附件
-	d.downloadPostEntryAttachments(&post.MainPost, cacheDir, metadata, &wg, &mu, &errors)
-
-	// 下载回复中的附件
-	for i := range post.Replies {
-		d.downloadPostEntryAttachments(&post.Replies[i], cacheDir, metadata, &wg, &mu, &errors)
-	}
-
-	// 等待所有下载完成
-	wg.Wait()
-
-	// 保存元数据
-	d.saveMetadata(metadata, cacheDir)
-
-	// 更新本地路径
-	d.UpdateLocalPaths(post, cacheDir)
-
-	// 返回错误信息
-	if len(errors) > 0 {
-		return fmt.Errorf("下载过程中发生 %d 个错误，第一个错误: %v", len(errors), errors[0])
-	}
-
-	return nil
-}
-
-// downloadPostEntryAttachments 下载单个楼层的附件
-func (d *DefaultAttachmentDownloader) downloadPostEntryAttachments(
-	entry *PostEntry,
-	cacheDir string,
-	metadata *DownloadMetadata,
-	wg *sync.WaitGroup,
-	mu *sync.Mutex,
-	errors *[]error,
-) {
-	// 下载图片
-	if d.config.CacheImages {
-		for i := range entry.Images {
-			wg.Add(1)
-			go func(img *Image) {
-				defer wg.Done()
-
-				d.semaphore <- struct{}{}        // 获取信号量
-				defer func() { <-d.semaphore }() // 释放信号量
-
-				if err := d.DownloadImage(img, cacheDir); err != nil {
-					mu.Lock()
-					*errors = append(*errors, fmt.Errorf("下载图片失败 %s: %v", img.URL, err))
-					mu.Unlock()
-				} else {
-					// 更新元数据
-					mu.Lock()
-					d.updateMetadata(metadata, img.URL, img.LocalPath, img.FileSize, true)
-					mu.Unlock()
-				}
-			}(&entry.Images[i])
-		}
-	}
-
-	// 下载其他附件
-	if d.config.CacheFiles {
-		for i := range entry.Attachments {
-			wg.Add(1)
-			go func(att *Attachment) {
-				defer wg.Done()
-
-				d.semaphore <- struct{}{}        // 获取信号量
-				defer func() { <-d.semaphore }() // 释放信号量
-
-				if err := d.DownloadAttachment(att, cacheDir); err != nil {
-					mu.Lock()
-					*errors = append(*errors, fmt.Errorf("下载附件失败 %s: %v", att.URL, err))
-					mu.Unlock()
-				} else {
-					// 更新元数据
-					mu.Lock()
-					d.updateMetadata(metadata, att.URL, att.LocalPath, att.FileSize, true)
-					mu.Unlock()
-				}
-			}(&entry.Attachments[i])
-		}
-	}
-}
-
 // DownloadAllToPostDir 下载帖子中的所有附件到指定的帖子目录
 func (d *DefaultAttachmentDownloader) DownloadAllToPostDir(post *Post, baseDir string) error {
 	if !d.config.EnableCache {
@@ -326,78 +225,6 @@ func (d *DefaultAttachmentDownloader) downloadPostEntryAttachmentsToDir(
 	}
 }
 
-// DownloadImage 下载图片
-func (d *DefaultAttachmentDownloader) DownloadImage(img *Image, cacheDir string) error {
-	if img.URL == "" {
-		return fmt.Errorf("图片URL为空")
-	}
-
-	// 检查缓存
-	if localPath, exists := d.CheckCache(img.URL, cacheDir); exists && d.config.SkipExisting {
-		img.LocalPath = localPath
-		img.Downloaded = true
-		return nil
-	}
-
-	// 生成本地路径
-	localPath := d.GetLocalPath(img.URL, filepath.Join(cacheDir, "images"))
-
-	// 确保目录存在
-	if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
-		return fmt.Errorf("创建图片目录失败: %v", err)
-	}
-
-	// 下载文件
-	fileSize, err := d.downloadFile(img.URL, localPath)
-	if err != nil {
-		return err
-	}
-
-	// 更新图片信息
-	img.LocalPath = localPath
-	img.FileSize = fileSize
-	img.Downloaded = true
-
-	fmt.Printf("下载图片成功: %s -> %s\n", img.URL, localPath)
-	return nil
-}
-
-// DownloadAttachment 下载附件
-func (d *DefaultAttachmentDownloader) DownloadAttachment(att *Attachment, cacheDir string) error {
-	if att.URL == "" {
-		return fmt.Errorf("附件URL为空")
-	}
-
-	// 检查缓存
-	if localPath, exists := d.CheckCache(att.URL, cacheDir); exists && d.config.SkipExisting {
-		att.LocalPath = localPath
-		att.Downloaded = true
-		return nil
-	}
-
-	// 生成本地路径
-	localPath := d.GetLocalPath(att.URL, filepath.Join(cacheDir, "attachments"))
-
-	// 确保目录存在
-	if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
-		return fmt.Errorf("创建附件目录失败: %v", err)
-	}
-
-	// 下载文件
-	fileSize, err := d.downloadFile(att.URL, localPath)
-	if err != nil {
-		return err
-	}
-
-	// 更新附件信息
-	att.LocalPath = localPath
-	att.FileSize = fileSize
-	att.Downloaded = true
-
-	fmt.Printf("下载附件成功: %s -> %s\n", att.URL, localPath)
-	return nil
-}
-
 // downloadFile 下载文件到本地
 func (d *DefaultAttachmentDownloader) downloadFile(url, localPath string) (int64, error) {
 	// 检查文件大小限制
@@ -494,18 +321,6 @@ func (d *DefaultAttachmentDownloader) extractFileExtension(url string) string {
 	return ""
 }
 
-// CheckCache 检查文件是否已在缓存中
-func (d *DefaultAttachmentDownloader) CheckCache(url, cacheDir string) (string, bool) {
-	localPath := d.GetLocalPath(url, cacheDir)
-
-	// 检查文件是否存在
-	if _, err := os.Stat(localPath); err == nil {
-		return localPath, true
-	}
-
-	return "", false
-}
-
 // CheckCacheInDir 检查文件是否已在指定目录的缓存中
 func (d *DefaultAttachmentDownloader) CheckCacheInDir(url, tidDir string) (string, bool) {
 	// 构建可能的文件路径
@@ -532,17 +347,6 @@ func (d *DefaultAttachmentDownloader) CheckCacheInDir(url, tidDir string) (strin
 	return "", false
 }
 
-// UpdateLocalPaths 更新帖子中所有附件的本地路径
-func (d *DefaultAttachmentDownloader) UpdateLocalPaths(post *Post, cacheDir string) {
-	// 更新主楼
-	d.updatePostEntryPaths(&post.MainPost, cacheDir)
-
-	// 更新回复
-	for i := range post.Replies {
-		d.updatePostEntryPaths(&post.Replies[i], cacheDir)
-	}
-}
-
 // UpdateLocalPathsForPostDir 更新帖子中所有附件的本地路径（针对帖子目录）
 func (d *DefaultAttachmentDownloader) UpdateLocalPathsForPostDir(post *Post, tidDir string) {
 	// 更新主楼
@@ -551,29 +355,6 @@ func (d *DefaultAttachmentDownloader) UpdateLocalPathsForPostDir(post *Post, tid
 	// 更新回复
 	for i := range post.Replies {
 		d.updatePostEntryPathsForPostDir(&post.Replies[i], tidDir)
-	}
-}
-
-// updatePostEntryPaths 更新单个楼层的附件路径
-func (d *DefaultAttachmentDownloader) updatePostEntryPaths(entry *PostEntry, cacheDir string) {
-	// 更新图片路径
-	for i := range entry.Images {
-		if entry.Images[i].LocalPath == "" {
-			if localPath, exists := d.CheckCache(entry.Images[i].URL, filepath.Join(cacheDir, "images")); exists {
-				entry.Images[i].LocalPath = localPath
-				entry.Images[i].Downloaded = true
-			}
-		}
-	}
-
-	// 更新附件路径
-	for i := range entry.Attachments {
-		if entry.Attachments[i].LocalPath == "" {
-			if localPath, exists := d.CheckCache(entry.Attachments[i].URL, filepath.Join(cacheDir, "attachments")); exists {
-				entry.Attachments[i].LocalPath = localPath
-				entry.Attachments[i].Downloaded = true
-			}
-		}
 	}
 }
 
@@ -598,23 +379,6 @@ func (d *DefaultAttachmentDownloader) updatePostEntryPathsForPostDir(entry *Post
 			}
 		}
 	}
-}
-
-// ensureCacheDir 确保缓存目录存在
-func (d *DefaultAttachmentDownloader) ensureCacheDir(cacheDir string) error {
-	dirs := []string{
-		cacheDir,
-		filepath.Join(cacheDir, "images"),
-		filepath.Join(cacheDir, "attachments"),
-	}
-
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 // loadMetadata 加载下载元数据
@@ -680,22 +444,4 @@ func (d *DefaultAttachmentDownloader) calculateFileMD5(filePath string) (string,
 	}
 
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
-}
-
-// GetDownloadStats 获取下载统计信息
-func (d *DefaultAttachmentDownloader) GetDownloadStats(cacheDir string) (int, int, int64) {
-	metadata := d.loadMetadata(cacheDir)
-
-	total := len(metadata.Downloads)
-	downloaded := 0
-	var totalSize int64
-
-	for _, info := range metadata.Downloads {
-		if info.Downloaded {
-			downloaded++
-			totalSize += info.FileSize
-		}
-	}
-
-	return total, downloaded, totalSize
 }
