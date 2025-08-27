@@ -264,15 +264,18 @@ func (e *DataExtractor) ExtractAuthor(element *goquery.Selection) (*Author, erro
 					author.LastLogin = lastLoginMatches[1]
 				}
 			}
-			
-			// 提取个性签名
-			if author.Signature == "" {
-				signaturePattern := regexp.MustCompile(`（(.+?)）`)
-				signatureMatches := signaturePattern.FindStringSubmatch(infoText)
-				if len(signatureMatches) > 1 {
-					author.Signature = signatureMatches[1]
-				}
-			}
+		}
+	}
+
+	// 提取个性签名 - 从 div.bianji 元素提取
+	if author.Signature == "" {
+		signatureElement := element.Find(".bianji")
+		if signatureElement.Length() > 0 {
+			signatureText := strings.TrimSpace(signatureElement.Text())
+			// 移除括号
+			signatureText = strings.TrimPrefix(signatureText, "（")
+			signatureText = strings.TrimSuffix(signatureText, "）")
+			author.Signature = signatureText
 		}
 	}
 
@@ -396,7 +399,15 @@ func (e *DataExtractor) parsePostTime(timeText string) time.Time {
 
 // extractPostID 提取帖子ID
 func (e *DataExtractor) extractPostID(element *goquery.Selection) string {
-	// 尝试从read_xxx id中提取
+	// 尝试从table cell的id中提取 (e.g., id="td_tpc")
+	tableCell := element.Find("th[id^=\"td_\"]")
+	if tableCell.Length() > 0 {
+		if id, exists := tableCell.First().Attr("id"); exists {
+			return strings.TrimPrefix(id, "td_")
+		}
+	}
+
+	// 尝试从read_xxx id中提取 (fallback)
 	contentElement := element.Find("[id^=\"read_\"]")
 	if contentElement.Length() > 0 {
 		if id, exists := contentElement.First().Attr("id"); exists {
