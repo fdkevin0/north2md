@@ -9,6 +9,7 @@ require (
 	github.com/r3labs/diff/v3 v3.0.2
 	github.com/samber/lo v1.51.0
 	github.com/spf13/cobra v1.9.1
+	github.com/yuin/goldmark v1.7.13
 )
 
 require (

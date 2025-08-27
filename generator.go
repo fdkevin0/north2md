@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"os"
@@ -11,6 +12,10 @@ import (
 	"github.com/BurntSushi/toml"
 	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
 	"github.com/JohannesKaufmann/html-to-markdown/v2/converter"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/renderer/html"
 )
 
 // MarkdownGenerator Markdown生成器
@@ -170,14 +175,36 @@ func (g *MarkdownGenerator) writePostWithComplexHeader(md *strings.Builder, entr
 		if err != nil {
 			log.Fatalln(err)
 		}
+
+		markdown, err = g.cacheImages([]byte(markdown))
+		if err != nil {
+			log.Fatalln(err)
+		}
+
 		md.WriteString(markdown)
 		md.WriteString("\n\n")
-	} else if entry.Content != "" {
-		// 写入内容
-		content := g.formatContent(entry.Content)
-		md.WriteString(content)
-		md.WriteString("\n\n")
 	}
+}
+
+func (g *MarkdownGenerator) cacheImages(src []byte) (dst string, err error) {
+	var buf bytes.Buffer
+
+	md := goldmark.New(
+		goldmark.WithExtensions(extension.GFM),
+		goldmark.WithParserOptions(
+			parser.WithAutoHeadingID(),
+		),
+		goldmark.WithRendererOptions(
+			html.WithHardWraps(),
+			html.WithXHTML(),
+		),
+	)
+
+	if err = md.Convert(src, &buf); err != nil {
+		return
+	}
+
+	return buf.String(), nil
 }
 
 // writeFooter 写入文档尾部信息
