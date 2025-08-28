@@ -171,13 +171,6 @@ func (e *DataExtractor) extractPostEntry(table *goquery.Selection, floor, baseUR
 	// 提取帖子ID
 	entry.PostID = e.extractPostID(table)
 
-	// 提取图片和附件
-	if contentElement.Length() > 0 {
-		// 提取图片
-		images := e.ExtractImages(contentElement.First(), baseURL)
-		entry.Images = images
-	}
-
 	return entry, nil
 }
 
