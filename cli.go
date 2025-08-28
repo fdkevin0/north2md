@@ -143,19 +143,19 @@ func initConfig() error {
 	}
 
 	if flagCookieFile != "" {
-		config.HTTPOpts.CookieFile = flagCookieFile
+		config.HTTPCookieFile = flagCookieFile
 	}
 
 	if flagNoCache {
-		config.CacheOpts.EnableCache = false
+		config.CacheEnableCache = false
 	}
 
 	if flagTimeout > 0 {
-		config.HTTPOpts.Timeout = time.Duration(flagTimeout) * time.Second
+		config.HTTPTimeout = time.Duration(flagTimeout) * time.Second
 	}
 
 	if flagMaxConcurrent > 0 {
-		config.HTTPOpts.MaxConcurrent = flagMaxConcurrent
+		config.HTTPMaxConcurrent = flagMaxConcurrent
 	}
 
 	return nil
@@ -177,13 +177,41 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 	}
 
 	// 创建HTTP客户端
-	httpClient := NewHTTPFetcher(&config.HTTPOpts, config.BaseURL)
+	httpClient := NewHTTPFetcher(&HTTPOptions{
+		Timeout:       config.HTTPTimeout,
+		UserAgent:     config.HTTPUserAgent,
+		MaxRetries:    config.HTTPMaxRetries,
+		RetryDelay:    config.HTTPRetryDelay,
+		MaxConcurrent: config.HTTPMaxConcurrent,
+		CookieFile:    config.HTTPCookieFile,
+		EnableCookie:  config.HTTPEnableCookie,
+		CustomHeaders: config.HTTPCustomHeaders,
+	}, config.BaseURL)
 
-	// 创建HTML解析器
-	htmlParser := NewHTMLParser()
+	// 创建帖子解析器
+	postParser := NewPostParser(&HTMLSelectors{
+		Title:       config.SelectorTitle,
+		Forum:       config.SelectorForum,
+		PostTable:   config.SelectorPostTable,
+		AuthorName:  config.SelectorAuthorName,
+		PostTime:    config.SelectorPostTime,
+		PostContent: config.SelectorPostContent,
+		Floor:       config.SelectorFloor,
+		AuthorInfo:  config.SelectorAuthorInfo,
+		Avatar:      config.SelectorAvatar,
+		Images:      config.SelectorImages,
+		Attachments: config.SelectorAttachments,
+	})
 
 	// 创建Markdown生成器
-	markdownGenerator := NewMarkdownGenerator(&config.MarkdownOpts)
+	markdownGenerator := NewMarkdownGenerator(&MarkdownOptions{
+		IncludeAuthorInfo: config.MarkdownIncludeAuthorInfo,
+		IncludeImages:     config.MarkdownIncludeImages,
+		ImageStyle:        config.MarkdownImageStyle,
+		TableOfContents:   config.MarkdownTableOfContents,
+		IncludeTOC:        config.MarkdownIncludeTOC,
+		FloorNumbering:    config.MarkdownFloorNumbering,
+	})
 
 	// 获取帖子内容
 	var post *Post
@@ -191,22 +219,30 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 
 	if config.TID != "" {
 		// 在线抓取模式
-		fetcher := NewOnlinePostFetcher(httpClient, htmlParser, &config.Selectors)
-		post, err = fetcher.FetchPost(config.TID)
+		post, err = httpClient.FetchPostWithPagination(config.TID, postParser, &HTMLSelectors{
+			Title:       config.SelectorTitle,
+			Forum:       config.SelectorForum,
+			PostTable:   config.SelectorPostTable,
+			AuthorName:  config.SelectorAuthorName,
+			PostTime:    config.SelectorPostTime,
+			PostContent: config.SelectorPostContent,
+			Floor:       config.SelectorFloor,
+			AuthorInfo:  config.SelectorAuthorInfo,
+			Avatar:      config.SelectorAvatar,
+			Images:      config.SelectorImages,
+			Attachments: config.SelectorAttachments,
+		})
 		if err != nil {
 			return fmt.Errorf("抓取帖子失败: %v", err)
 		}
 	} else if flagInputFile != "" {
 		// 从本地文件加载
-		if err := htmlParser.LoadFromFile(flagInputFile); err != nil {
+		if err := postParser.LoadFromFile(flagInputFile); err != nil {
 			return fmt.Errorf("加载HTML文件失败: %v", err)
 		}
 
-		// 创建数据提取器
-		extractor := NewDataExtractor(&config.Selectors)
-
 		// 提取帖子数据
-		post, err = extractor.ExtractPost(htmlParser)
+		post, err = postParser.ExtractPost()
 		if err != nil {
 			return fmt.Errorf("提取帖子数据失败: %v", err)
 		}

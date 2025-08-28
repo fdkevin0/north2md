@@ -13,21 +13,21 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-// HTTPFetcher 默认HTTP抓取器实现
-type HTTPFetcher struct {
+// Fetcher HTTP抓取器
+type Fetcher struct {
 	client        *http.Client
 	config        *HTTPOptions
-	cookieManager CookieManager
+	cookieManager *CookieManager
 	baseURL       string
 }
 
 // NewHTTPFetcher 创建新的HTTP抓取器
-func NewHTTPFetcher(config *HTTPOptions, baseURL string) *HTTPFetcher {
+func NewHTTPFetcher(config *HTTPOptions, baseURL string) *Fetcher {
 	client := &http.Client{
 		Timeout: config.Timeout,
 	}
 
-	fetcher := &HTTPFetcher{
+	fetcher := &Fetcher{
 		client:        client,
 		config:        config,
 		cookieManager: NewCookieManager(),
@@ -43,7 +43,7 @@ func NewHTTPFetcher(config *HTTPOptions, baseURL string) *HTTPFetcher {
 }
 
 // FetchPost 抓取指定TID的帖子内容
-func (f *HTTPFetcher) FetchPost(tid string) (string, error) {
+func (f *Fetcher) FetchPost(tid string) (string, error) {
 	if tid == "" {
 		return "", fmt.Errorf("TID不能为空")
 	}
@@ -55,7 +55,7 @@ func (f *HTTPFetcher) FetchPost(tid string) (string, error) {
 }
 
 // buildPostURL 构建帖子URL
-func (f *HTTPFetcher) buildPostURL(tid string, page int) string {
+func (f *Fetcher) buildPostURL(tid string, page int) string {
 	// 确保baseURL以/结尾
 	baseURL := strings.TrimRight(f.baseURL, "/")
 
@@ -69,7 +69,7 @@ func (f *HTTPFetcher) buildPostURL(tid string, page int) string {
 }
 
 // FetchPostWithPage 抓取指定TID和页码的帖子内容
-func (f *HTTPFetcher) FetchPostWithPage(tid string, page int) (string, error) {
+func (f *Fetcher) FetchPostWithPage(tid string, page int) (string, error) {
 	if tid == "" {
 		return "", fmt.Errorf("TID不能为空")
 	}
@@ -83,7 +83,7 @@ func (f *HTTPFetcher) FetchPostWithPage(tid string, page int) (string, error) {
 }
 
 // FetchURL 抓取指定URL的内容
-func (f *HTTPFetcher) FetchURL(targetURL string) (string, error) {
+func (f *Fetcher) FetchURL(targetURL string) (string, error) {
 	resp, err := f.FetchWithRetry(targetURL)
 	if err != nil {
 		return "", err
@@ -109,7 +109,7 @@ func (f *HTTPFetcher) FetchURL(targetURL string) (string, error) {
 }
 
 // FetchWithRetry 带重试机制的HTTP请求
-func (f *HTTPFetcher) FetchWithRetry(targetURL string) (*http.Response, error) {
+func (f *Fetcher) FetchWithRetry(targetURL string) (*http.Response, error) {
 	var lastErr error
 
 	for attempt := 0; attempt <= f.config.MaxRetries; attempt++ {
@@ -151,7 +151,7 @@ func (f *HTTPFetcher) FetchWithRetry(targetURL string) (*http.Response, error) {
 }
 
 // doRequest 执行单个HTTP请求
-func (f *HTTPFetcher) doRequest(targetURL string) (*http.Response, error) {
+func (f *Fetcher) doRequest(targetURL string) (*http.Response, error) {
 	req, err := http.NewRequest("GET", targetURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建请求失败: %v", err)
@@ -203,7 +203,7 @@ func (f *HTTPFetcher) doRequest(targetURL string) (*http.Response, error) {
 }
 
 // LoadCookies 从文件加载Cookie
-func (f *HTTPFetcher) LoadCookies(cookieFile string) error {
+func (f *Fetcher) LoadCookies(cookieFile string) error {
 	if !f.config.EnableCookie {
 		return nil
 	}
@@ -212,7 +212,7 @@ func (f *HTTPFetcher) LoadCookies(cookieFile string) error {
 }
 
 // SaveCookies 保存Cookie到文件
-func (f *HTTPFetcher) SaveCookies(cookieFile string) error {
+func (f *Fetcher) SaveCookies(cookieFile string) error {
 	if !f.config.EnableCookie {
 		return nil
 	}
@@ -220,60 +220,42 @@ func (f *HTTPFetcher) SaveCookies(cookieFile string) error {
 	return f.cookieManager.SaveToFile(cookieFile)
 }
 
-// OnlinePostFetcher 在线帖子获取器
-type OnlinePostFetcher struct {
-	httpFetcher   *HTTPFetcher
-	htmlParser    *HTMLParser
-	selectors     *HTMLSelectors
-	dataExtractor *DataExtractor
-}
-
-// NewOnlinePostFetcher 创建新的在线帖子获取器
-func NewOnlinePostFetcher(httpFetcher *HTTPFetcher, htmlParser *HTMLParser, selectors *HTMLSelectors) *OnlinePostFetcher {
-	return &OnlinePostFetcher{
-		httpFetcher:   httpFetcher,
-		htmlParser:    htmlParser,
-		selectors:     selectors,
-		dataExtractor: NewDataExtractor(selectors),
-	}
-}
-
-// FetchPost 获取指定TID的帖子（自动处理分页）
-func (f *OnlinePostFetcher) FetchPost(tid string) (*Post, error) {
+// FetchPostWithPagination 获取指定TID的帖子（自动处理分页）
+func (f *Fetcher) FetchPostWithPagination(tid string, postParser *PostParser, selectors *HTMLSelectors) (*Post, error) {
 	// 首先获取第一页以确定总页数
-	firstPageHTML, err := f.httpFetcher.FetchPost(tid)
+	firstPageHTML, err := f.FetchPost(tid)
 	if err != nil {
 		return nil, fmt.Errorf("获取帖子第一页失败: %v", err)
 	}
 
 	// 解析第一页
-	if err := f.htmlParser.LoadFromString(firstPageHTML); err != nil {
+	if err := postParser.LoadFromString(firstPageHTML); err != nil {
 		return nil, fmt.Errorf("解析第一页HTML失败: %v", err)
 	}
 
 	// 尝试从第一页获取总页数
-	totalPages := f.extractTotalPages(f.htmlParser)
+	totalPages := f.extractTotalPages(postParser)
 	if totalPages <= 0 {
 		// 如果无法提取总页数，默认为1页
 		totalPages = 1
 	}
 
 	// 收集所有页面的解析器
-	var parsers []*HTMLParser
+	var parsers []*PostParser
 
 	// 添加第一页解析器
-	parsers = append(parsers, f.htmlParser)
+	parsers = append(parsers, postParser)
 
 	// 获取剩余页面
 	for page := 2; page <= totalPages; page++ {
-		pageHTML, err := f.httpFetcher.FetchPostWithPage(tid, page)
+		pageHTML, err := f.FetchPostWithPage(tid, page)
 		if err != nil {
 			slog.Error("Failed to fetch post page", "page", page, "error", err)
 			continue
 		}
 
 		// 创建新的解析器实例
-		pageParser := NewHTMLParser()
+		pageParser := NewPostParser(selectors)
 		if err := pageParser.LoadFromString(pageHTML); err != nil {
 			slog.Error("Failed to parse HTML for page", "page", page, "error", err)
 			continue
@@ -283,8 +265,8 @@ func (f *OnlinePostFetcher) FetchPost(tid string) (*Post, error) {
 	}
 
 	// 从所有页面提取数据
-	// 使用统一的方法处理单页和多页情况
-	post, err := f.dataExtractor.ExtractPostFromMultiplePages(parsers)
+	// Use the first parser to extract data from all parsers
+	post, err := parsers[0].ExtractPostFromMultiplePages(parsers)
 	if err != nil {
 		return nil, fmt.Errorf("从多页提取帖子数据失败: %v", err)
 	}
@@ -296,7 +278,7 @@ func (f *OnlinePostFetcher) FetchPost(tid string) (*Post, error) {
 }
 
 // extractTotalPages 从页面中提取总页数
-func (f *OnlinePostFetcher) extractTotalPages(parser *HTMLParser) int {
+func (f *Fetcher) extractTotalPages(parser *PostParser) int {
 	// 查找包含页数信息的元素
 	// 根据示例HTML，页数信息在 "Pages: 1/8" 格式中
 	pagesElement := parser.FindElement(".pagesone")

@@ -23,14 +23,22 @@ var (
 )
 
 func TestExtractPostDataFromHTML(t *testing.T) {
-	parser := main.NewHTMLParser()
+	parser := main.NewPostParser(&main.HTMLSelectors{
+		Title:       "h1#subject_tpc",
+		Forum:       "#breadcrumbs .crumbs-item.gray3:nth-child(3)",
+		PostTable:   "table.js-post",
+		AuthorName:  "strong",
+		PostTime:    ".tiptop .gray",
+		PostContent: "div[id^='read_']",
+		Floor:       ".tiptop .fl a",
+		AuthorInfo:  ".tiptop .tar",
+		Avatar:      "img[src*=\"avatar\"]",
+		Images:      "img",
+		Attachments: "a[href*=\"attachment\"]",
+	})
 	parser.LoadFromReader(bytes.NewBuffer(sourcePostHTML))
 
-	config := main.NewDefaultConfig()
-
-	extractor := main.NewDataExtractor(&config.Selectors)
-
-	resultPost, err := extractor.ExtractPost(parser)
+	resultPost, err := parser.ExtractPost()
 	if err != nil {
 		t.Errorf("Failed to extract post data: %v", err)
 	}

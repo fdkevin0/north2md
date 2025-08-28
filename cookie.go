@@ -31,35 +31,14 @@ type CurlImportOptions struct {
 	FilterPatterns    []string `toml:"filter_patterns"`    // 过滤模式
 }
 
-// CurlParser curl命令解析器接口
-type CurlParser interface {
-	ParseCommand(curlCmd string) (*CurlCommand, error)
-	ParseFromFile(filePath string) ([]*CurlCommand, error)
-	ExtractCookies(curlCmd *CurlCommand) ([]*CookieEntry, error)
-	ValidateCommand(curlCmd string) error
-}
-
-// CookieManager Cookie管理接口
-type CookieManager interface {
-	LoadFromFile(filepath string) error
-	SaveToFile(filepath string) error
-	AddCookie(cookie *CookieEntry)
-	GetCookiesForURL(urlStr string) []*CookieEntry
-	UpdateFromResponse(resp *http.Response)
-	CleanExpired()
-	SetCookieFromString(cookieStr, domain, path string) error
-	GetCookieString(domain string) string
-	ClearCookies()
-}
-
-// DefaultCookieManager 默认Cookie管理器实现
-type DefaultCookieManager struct {
+// CookieManager Cookie管理器
+type CookieManager struct {
 	jar *CookieJar
 }
 
 // NewCookieManager 创建新的Cookie管理器
-func NewCookieManager() *DefaultCookieManager {
-	return &DefaultCookieManager{
+func NewCookieManager() *CookieManager {
+	return &CookieManager{
 		jar: &CookieJar{
 			Cookies:     make([]CookieEntry, 0),
 			LastUpdated: time.Now(),
@@ -68,7 +47,7 @@ func NewCookieManager() *DefaultCookieManager {
 }
 
 // LoadFromFile 从文件加载Cookie
-func (cm *DefaultCookieManager) LoadFromFile(filepath string) error {
+func (cm *CookieManager) LoadFromFile(filepath string) error {
 	if filepath == "" {
 		return nil
 	}
@@ -111,7 +90,7 @@ func (cm *DefaultCookieManager) LoadFromFile(filepath string) error {
 }
 
 // SaveToFile 保存Cookie到文件
-func (cm *DefaultCookieManager) SaveToFile(filepath string) error {
+func (cm *CookieManager) SaveToFile(filepath string) error {
 	if filepath == "" {
 		return nil
 	}
@@ -135,7 +114,7 @@ func (cm *DefaultCookieManager) SaveToFile(filepath string) error {
 }
 
 // AddCookie 添加Cookie
-func (cm *DefaultCookieManager) AddCookie(cookie *CookieEntry) {
+func (cm *CookieManager) AddCookie(cookie *CookieEntry) {
 	if cookie == nil {
 		return
 	}
@@ -156,7 +135,7 @@ func (cm *DefaultCookieManager) AddCookie(cookie *CookieEntry) {
 }
 
 // GetCookiesForURL 获取指定URL适用的Cookie
-func (cm *DefaultCookieManager) GetCookiesForURL(urlStr string) []*CookieEntry {
+func (cm *CookieManager) GetCookiesForURL(urlStr string) []*CookieEntry {
 	u, err := url.Parse(urlStr)
 	if err != nil {
 		return nil
@@ -173,7 +152,7 @@ func (cm *DefaultCookieManager) GetCookiesForURL(urlStr string) []*CookieEntry {
 }
 
 // isCookieApplicable 检查Cookie是否适用于指定URL
-func (cm *DefaultCookieManager) isCookieApplicable(cookie *CookieEntry, u *url.URL) bool {
+func (cm *CookieManager) isCookieApplicable(cookie *CookieEntry, u *url.URL) bool {
 	// 检查过期时间
 	if !cookie.Expires.IsZero() && cookie.Expires.Before(time.Now()) {
 		return false
@@ -198,7 +177,7 @@ func (cm *DefaultCookieManager) isCookieApplicable(cookie *CookieEntry, u *url.U
 }
 
 // domainMatches 检查域名是否匹配
-func (cm *DefaultCookieManager) domainMatches(cookieDomain, host string) bool {
+func (cm *CookieManager) domainMatches(cookieDomain, host string) bool {
 	if cookieDomain == "" {
 		return true
 	}
@@ -217,7 +196,7 @@ func (cm *DefaultCookieManager) domainMatches(cookieDomain, host string) bool {
 }
 
 // pathMatches 检查路径是否匹配
-func (cm *DefaultCookieManager) pathMatches(cookiePath, urlPath string) bool {
+func (cm *CookieManager) pathMatches(cookiePath, urlPath string) bool {
 	if cookiePath == "" || cookiePath == "/" {
 		return true
 	}
@@ -231,7 +210,7 @@ func (cm *DefaultCookieManager) pathMatches(cookiePath, urlPath string) bool {
 }
 
 // UpdateFromResponse 从HTTP响应更新Cookie
-func (cm *DefaultCookieManager) UpdateFromResponse(resp *http.Response) {
+func (cm *CookieManager) UpdateFromResponse(resp *http.Response) {
 	if resp == nil {
 		return
 	}
@@ -278,7 +257,7 @@ func (cm *DefaultCookieManager) UpdateFromResponse(resp *http.Response) {
 }
 
 // CleanExpired 清理过期Cookie
-func (cm *DefaultCookieManager) CleanExpired() {
+func (cm *CookieManager) CleanExpired() {
 	now := time.Now()
 	var validCookies []CookieEntry
 
@@ -300,66 +279,7 @@ func (cm *DefaultCookieManager) CleanExpired() {
 	cm.jar.Cookies = validCookies
 }
 
-// SetCookieFromString 从字符串设置Cookie
-func (cm *DefaultCookieManager) SetCookieFromString(cookieStr, domain, path string) error {
-	// 解析Cookie字符串，格式："name=value; name2=value2"
-	pairs := strings.Split(cookieStr, ";")
-
-	for _, pair := range pairs {
-		pair = strings.TrimSpace(pair)
-		if pair == "" {
-			continue
-		}
-
-		parts := strings.SplitN(pair, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-
-		name := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-
-		if name == "" {
-			continue
-		}
-
-		cookie := &CookieEntry{
-			Name:   name,
-			Value:  value,
-			Domain: domain,
-			Path:   path,
-		}
-
-		cm.AddCookie(cookie)
-	}
-
-	return nil
-}
-
-// GetCookieString 获取指定域名的Cookie字符串
-func (cm *DefaultCookieManager) GetCookieString(domain string) string {
-	var cookies []string
-
-	for _, cookie := range cm.jar.Cookies {
-		if cm.domainMatches(cookie.Domain, domain) {
-			cookies = append(cookies, fmt.Sprintf("%s=%s", cookie.Name, cookie.Value))
-		}
-	}
-
-	return strings.Join(cookies, "; ")
-}
-
-// GetAllCookies 获取所有Cookie
-func (cm *DefaultCookieManager) GetAllCookies() []CookieEntry {
-	return cm.jar.Cookies
-}
-
 // ClearCookies 清除所有Cookie
-func (cm *DefaultCookieManager) ClearCookies() {
+func (cm *CookieManager) ClearCookies() {
 	cm.jar.Cookies = make([]CookieEntry, 0)
-}
-
-// GetCookieCount 获取Cookie数量
-func (cm *DefaultCookieManager) GetCookieCount() int {
-	return len(cm.jar.Cookies)
 }
