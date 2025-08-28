@@ -12,11 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
-	"github.com/yuin/goldmark/util"
 )
 
 // imageCache stores the mapping from original URL to cached filename.
@@ -26,40 +26,11 @@ type imageCache struct {
 	cacheDir string
 }
 
-// urlRewriter is a goldmark transformer that updates image URLs.
-type urlRewriter struct {
-	cache *imageCache
-}
-
-// Transform modifies the AST to update image destinations.
-func (t *urlRewriter) Transform(doc *ast.Document, reader text.Reader, _ parser.Context) {
-	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-
-		if n.Kind() == ast.KindImage {
-			img := n.(*ast.Image)
-			originalURL := string(img.Destination)
-
-			if isRemoteURL(originalURL) {
-				if cachedFile, ok := t.cache.mapping[originalURL]; ok {
-					// Replace the destination with the new, local path.
-					// Ensure the path is relative to where the new markdown file will be.
-					newPath := filepath.Join(t.cache.cacheDir, cachedFile)
-					img.Destination = []byte(newPath)
-					log.Printf("Updated image path for %s to %s", originalURL, newPath)
-				}
-			}
-		}
-		return ast.WalkContinue, nil
-	})
-}
-
 // downloadAndCacheImages parses a markdown document, downloads all images,
 // and saves them to a cache directory named by their MD5 hash.
 func downloadAndCacheImages(tid string, mdDoc []byte, cacheDir string) ([]byte, error) {
 	// Create the cache directory if it doesn't exist.
+	// Note: cacheDir is relative to current working directory (which should be tid/)
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
@@ -69,20 +40,13 @@ func downloadAndCacheImages(tid string, mdDoc []byte, cacheDir string) ([]byte, 
 		cacheDir: cacheDir,
 	}
 
-	// Create a single Goldmark instance with all configurations.
-	md := goldmark.New(
-		goldmark.WithParserOptions(
-			parser.WithAutoHeadingID(),
-			parser.WithASTTransformers(util.PrioritizedValue{
-				Value:    &urlRewriter{cache: cache},
-				Priority: 200,
-			}),
-		),
-	)
+	// Create a Goldmark instance for parsing
+	md := goldmark.New(goldmark.WithParserOptions(parser.WithAutoHeadingID()))
 
-	// Step 1: Parse the document and download images.
-	// We do this manually to populate the cache before the transformer runs.
+	// Step 1: Parse the document
 	doc := md.Parser().Parse(text.NewReader(mdDoc))
+
+	// Step 2: Walk the AST to find and download images
 	err := ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -124,13 +88,47 @@ func downloadAndCacheImages(tid string, mdDoc []byte, cacheDir string) ([]byte, 
 		return nil, fmt.Errorf("error during AST walk: %w", err)
 	}
 
-	// Step 2: Render the updated document. The urlRewriter will be triggered here.
-	var buf bytes.Buffer
-	if err := md.Renderer().Render(&buf, mdDoc, doc); err != nil {
-		return nil, fmt.Errorf("failed to render updated markdown: %w", err)
+	// Step 3: Walk the AST again to replace URLs with cached paths
+	err = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+
+		if n.Kind() == ast.KindImage {
+			img := n.(*ast.Image)
+			originalURL := string(img.Destination)
+
+			if isRemoteURL(originalURL) {
+				if cachedFile, ok := cache.mapping[originalURL]; ok {
+					// Replace the destination with the new, local path.
+					// Path is relative to the markdown file location (tid/post.md -> tid/images/filename)
+					newPath := filepath.Join(cache.cacheDir, cachedFile)
+					img.Destination = []byte(newPath)
+					log.Printf("Updated image path for %s to %s", originalURL, newPath)
+				}
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("error during URL replacement: %w", err)
 	}
 
-	return buf.Bytes(), nil
+	// Step 4: Convert the AST back to markdown
+	var buf bytes.Buffer
+	if err := md.Renderer().Render(&buf, mdDoc, doc); err != nil {
+		return nil, fmt.Errorf("failed to render markdown: %w", err)
+	}
+
+	// The renderer produces HTML, but we want markdown
+	// We'll use the html-to-markdown converter that's already used in generator.go
+	markdown, err := htmltomarkdown.ConvertString(buf.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert HTML back to markdown: %w", err)
+	}
+
+	return []byte(markdown), nil
 }
 
 // downloadImage fetches image data from a URL.
