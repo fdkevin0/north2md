@@ -29,12 +29,6 @@ type imageCache struct {
 // downloadAndCacheImages parses a markdown document, downloads all images,
 // and saves them to a cache directory named by their MD5 hash.
 func downloadAndCacheImages(tid string, mdDoc []byte, cacheDir string) ([]byte, error) {
-	// Create the cache directory if it doesn't exist.
-	// Note: cacheDir is relative to current working directory (which should be tid/)
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create cache directory: %w", err)
-	}
-
 	cache := &imageCache{
 		mapping:  make(map[string]string),
 		cacheDir: cacheDir,

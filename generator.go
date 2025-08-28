@@ -66,16 +66,10 @@ func (g *MarkdownGenerator) SavePost(post *Post, baseDir string) error {
 		return fmt.Errorf("创建目录失败: %v", err)
 	}
 
-	// 创建images和attachments子目录
 	imagesDir := filepath.Join(tidDir, "images")
-	attachmentsDir := filepath.Join(tidDir, "attachments")
 
 	if err := os.MkdirAll(imagesDir, 0755); err != nil {
 		return fmt.Errorf("创建images目录失败: %v", err)
-	}
-
-	if err := os.MkdirAll(attachmentsDir, 0755); err != nil {
-		return fmt.Errorf("创建attachments目录失败: %v", err)
 	}
 
 	// 生成Markdown内容
