@@ -10,7 +10,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 
 	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
 	"github.com/yuin/goldmark"
@@ -24,6 +26,7 @@ import (
 type ImageHandler struct {
 	cacheDir string
 	mapping  map[string]string
+	httpClient *http.Client
 }
 
 // NewImageHandler creates a new image handler
@@ -31,6 +34,35 @@ func NewImageHandler(cacheDir string) *ImageHandler {
 	return &ImageHandler{
 		cacheDir: cacheDir,
 		mapping:  make(map[string]string),
+		httpClient: &http.Client{
+			Timeout: 0, // No timeout for downloads
+		},
+	}
+}
+
+// DownloadTask represents an image download task
+type DownloadTask struct {
+	URL  string
+	Post *Post
+}
+
+// DownloadResult represents the result of an image download
+type DownloadResult struct {
+	URL       string
+	ImageData []byte
+	Error     error
+}
+
+func (ih *ImageHandler) downloadWorker(tasks <-chan DownloadTask, results chan<- DownloadResult, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	for task := range tasks {
+		imageData, err := ih.downloadImage(task.URL)
+		results <- DownloadResult{
+			URL:       task.URL,
+			ImageData: imageData,
+			Error:     err,
+		}
 	}
 }
 
@@ -49,7 +81,16 @@ func (ih *ImageHandler) DownloadAndCacheImages(tid string, mdDoc []byte, post *P
 	// Step 1: Parse the document
 	doc := md.Parser().Parse(text.NewReader(mdDoc))
 
-	// Step 2: Walk the AST to find and download images
+	// Step 2: Walk the AST to collect image URLs for concurrent download
+	// Pre-allocate slices with estimated capacity to reduce allocations
+	estimatedImageCount := bytes.Count(mdDoc, []byte("![")) // Rough estimate based on markdown image syntax
+	if estimatedImageCount == 0 {
+		estimatedImageCount = 10 // Default capacity
+	}
+	
+	imageNodes := make([]*ast.Image, 0, estimatedImageCount)
+	imageURLs := make([]string, 0, estimatedImageCount)
+
 	err := ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -71,41 +112,8 @@ func (ih *ImageHandler) DownloadAndCacheImages(tid string, mdDoc []byte, post *P
 					return ast.WalkContinue, nil
 				}
 
-				slog.Info("Downloading image", "url", imageURL)
-
-				imageData, err := ih.downloadImage(imageURL)
-				if err != nil {
-					slog.Error("Failed to download image", "url", imageURL, "error", err)
-					return ast.WalkContinue, nil
-				}
-
-				hash := md5.Sum(imageData)
-				filename := fmt.Sprintf("%x%s", hash, filepath.Ext(imageURL))
-				filePath := filepath.Join(tid, ih.cacheDir, filename)
-
-				// Check if file already exists
-				if _, err := os.Stat(filePath); err == nil {
-					slog.Info("Image file already exists, skipping write", "path", filePath)
-				} else {
-					if err := os.WriteFile(filePath, imageData, 0644); err != nil {
-						slog.Error("Failed to save image to cache", "path", filePath, "error", err)
-						return ast.WalkContinue, nil
-					}
-				}
-
-				slog.Info("Cached image successfully", "original_url", imageURL, "cached_path", filePath)
-				ih.mapping[imageURL] = filename
-
-				// Add to post images metadata
-				alt := string(img.Title)
-				image := Image{
-					URL:        imageURL,
-					Local:      filename,
-					Alt:        alt,
-					Downloaded: true,
-					FileSize:   int64(len(imageData)),
-				}
-				post.Images = append(post.Images, image)
+				imageURLs = append(imageURLs, imageURL)
+				imageNodes = append(imageNodes, img)
 			}
 		}
 		return ast.WalkContinue, nil
@@ -115,7 +123,15 @@ func (ih *ImageHandler) DownloadAndCacheImages(tid string, mdDoc []byte, post *P
 		return nil, fmt.Errorf("error during AST walk: %w", err)
 	}
 
-	// Step 3: Walk the AST again to replace URLs with cached paths
+	// No images to download
+	if len(imageURLs) == 0 {
+		return ih.convertASTToMarkdown(md, mdDoc, doc)
+	}
+
+	// Step 3: Download images concurrently
+	ih.downloadImagesConcurrently(tid, imageURLs, post)
+	
+	// Step 4: Walk the AST again to replace URLs with cached paths
 	err = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -142,7 +158,86 @@ func (ih *ImageHandler) DownloadAndCacheImages(tid string, mdDoc []byte, post *P
 		return nil, fmt.Errorf("error during URL replacement: %w", err)
 	}
 
-	// Step 4: Convert the AST back to markdown
+	// Step 5: Convert the AST back to markdown
+	return ih.convertASTToMarkdown(md, mdDoc, doc)
+}
+
+// downloadImagesConcurrently downloads multiple images using a worker pool
+func (ih *ImageHandler) downloadImagesConcurrently(tid string, imageURLs []string, post *Post) map[string]string {
+	numWorkers := runtime.NumCPU()
+	if numWorkers > 8 {
+		numWorkers = 8 // Cap at 8 workers to avoid overwhelming the server
+	}
+
+	tasks := make(chan DownloadTask, len(imageURLs))
+	results := make(chan DownloadResult, len(imageURLs))
+	var wg sync.WaitGroup
+
+	// Start worker pool
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go ih.downloadWorker(tasks, results, &wg)
+	}
+
+	// Send tasks to workers
+	go func() {
+		for _, url := range imageURLs {
+			tasks <- DownloadTask{URL: url, Post: post}
+		}
+		close(tasks)
+	}()
+
+	// Collect results
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Process results
+	for result := range results {
+		if result.Error != nil {
+			slog.Error("Failed to download image", "url", result.URL, "error", result.Error)
+			continue
+		}
+
+		ih.processDownloadedImage(tid, result.URL, result.ImageData, post)
+	}
+
+	return ih.mapping
+}
+
+// processDownloadedImage processes a downloaded image and updates the mapping
+func (ih *ImageHandler) processDownloadedImage(tid, url string, imageData []byte, post *Post) {
+	hash := md5.Sum(imageData)
+	filename := fmt.Sprintf("%x%s", hash, filepath.Ext(url))
+	filePath := filepath.Join(tid, ih.cacheDir, filename)
+
+	// Check if file already exists
+	if _, err := os.Stat(filePath); err == nil {
+		slog.Info("Image file already exists, skipping write", "path", filePath)
+	} else {
+		if err := os.WriteFile(filePath, imageData, 0644); err != nil {
+			slog.Error("Failed to save image to cache", "path", filePath, "error", err)
+			return
+		}
+	}
+
+	slog.Info("Cached image successfully", "original_url", url, "cached_path", filePath)
+	ih.mapping[url] = filename
+
+	// Add to post images metadata
+	image := Image{
+		URL:        url,
+		Local:      filename,
+		Alt:        "", // Will be populated during AST walk
+		Downloaded: true,
+		FileSize:   int64(len(imageData)),
+	}
+	post.Images = append(post.Images, image)
+}
+
+// convertASTToMarkdown converts AST back to markdown format
+func (ih *ImageHandler) convertASTToMarkdown(md goldmark.Markdown, mdDoc []byte, doc ast.Node) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := md.Renderer().Render(&buf, mdDoc, doc); err != nil {
 		return nil, fmt.Errorf("failed to render markdown: %w", err)
@@ -160,7 +255,7 @@ func (ih *ImageHandler) DownloadAndCacheImages(tid string, mdDoc []byte, post *P
 
 // downloadImage fetches image data from a URL.
 func (ih *ImageHandler) downloadImage(imageURL string) ([]byte, error) {
-	resp, err := http.Get(imageURL)
+	resp, err := ih.httpClient.Get(imageURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make HTTP request: %w", err)
 	}
@@ -226,8 +321,6 @@ func (ih *ImageHandler) GetPlainTextFromHTML(htmlContent string) (string, error)
 	// Normalize spacing after extraction.
 	text = strings.Join(strings.Fields(text), " ")
 
-	text = strings.Trim(text, "\n")
-	text = strings.Trim(text, " ")
-	text = strings.Trim(text, "\n")
-	return text, nil
+	// Use shared utility for efficient trimming
+	return CleanHTMLContent(text), nil
 }

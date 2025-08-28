@@ -13,6 +13,16 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
+// Pre-compiled regex patterns for better performance
+var (
+	uidPattern            = regexp.MustCompile(`UID:\s*(\d+)`)
+	postCountPattern      = regexp.MustCompile(`发帖:\s*(\d+)`)
+	registerDatePattern   = regexp.MustCompile(`注册时间:\s*([0-9\-]+)`)
+	lastLoginPattern      = regexp.MustCompile(`最后登录:\s*([0-9\-]+)`)
+	uidURLPattern         = regexp.MustCompile(`uid[=-](\d+)`)
+	digitsPattern         = regexp.MustCompile(`(\d+)`)
+)
+
 // PostParser HTML解析和数据提取器
 type PostParser struct {
 	doc       *goquery.Document
@@ -47,7 +57,7 @@ func (p *PostParser) LoadFromFile(filename string) error {
 func (p *PostParser) LoadFromReader(reader io.Reader) error {
 	doc, err := goquery.NewDocumentFromReader(reader)
 	if err != nil {
-		return fmt.Errorf("解析HTML字符串失败: %v", err)
+		return NewParseError("解析HTML字符串失败", err)
 	}
 
 	p.doc = doc
@@ -173,13 +183,13 @@ func (p *PostParser) ExtractMainPost() (*PostEntry, error) {
 	// 查找主楼表格
 	postTable := p.FindElement(p.selectors.PostTable)
 	if postTable == nil || postTable.Length() == 0 {
-		return nil, fmt.Errorf("未找到帖子表格 (选择器: %s)", p.selectors.PostTable)
+		return nil, NewValidationError(fmt.Sprintf("未找到帖子表格 (选择器: %s)", p.selectors.PostTable))
 	}
 
 	// 查找主楼内容
 	postContent := postTable.Find(p.selectors.PostContent)
 	if postContent == nil || postContent.Length() == 0 {
-		return nil, fmt.Errorf("未找到帖子内容 (选择器: %s)", p.selectors.PostContent)
+		return nil, NewValidationError(fmt.Sprintf("未找到帖子内容 (选择器: %s)", p.selectors.PostContent))
 	}
 
 	return p.extractPostEntry(postTable, "GF")
@@ -187,16 +197,29 @@ func (p *PostParser) ExtractMainPost() (*PostEntry, error) {
 
 // ExtractReplies 提取所有回复
 func (p *PostParser) ExtractReplies() ([]PostEntry, error) {
-	var replies []PostEntry
-
 	// 查找所有帖子表格，跳过第一个（主楼）
 	postTables := p.FindElements(p.selectors.PostTable)
+	if postTables == nil || postTables.Length() == 0 {
+		return nil, NewValidationError(fmt.Sprintf("未找到帖子表格 (选择器: %s)", p.selectors.PostTable))
+	}
 
-	for i := 1; i < postTables.Length(); i++ {
-		table := postTables.Eq(i)
+	tableCount := postTables.Length()
+	if tableCount <= 1 {
+		return []PostEntry{}, nil
+	}
+
+	// Pre-allocate slice for better memory efficiency
+	replies := make([]PostEntry, 0, tableCount-1)
+
+	// Cache DOM selections to avoid repeated Eq(i) calls
+	tables := make([]*goquery.Selection, tableCount)
+	for i := 0; i < tableCount; i++ {
+		tables[i] = postTables.Eq(i)
+	}
+
+	for i := 1; i < tableCount; i++ {
 		floorNumber := p.generateFloorNumber(i)
-
-		entry, err := p.extractPostEntry(table, floorNumber)
+		entry, err := p.extractPostEntry(tables[i], floorNumber)
 		if err != nil {
 			slog.Error("Failed to extract floor", "floor", i, "error", err)
 			continue
@@ -281,7 +304,6 @@ func (p *PostParser) ExtractAuthor(element *goquery.Selection) (*Author, error) 
 
 			// 提取UID
 			if author.UID == "" {
-				uidPattern := regexp.MustCompile(`UID:\s*(\d+)`)
 				uidMatches := uidPattern.FindStringSubmatch(infoText)
 				if len(uidMatches) > 1 {
 					author.UID = uidMatches[1]
@@ -290,7 +312,6 @@ func (p *PostParser) ExtractAuthor(element *goquery.Selection) (*Author, error) 
 
 			// 提取发帖数
 			if author.PostCount == 0 {
-				postCountPattern := regexp.MustCompile(`发帖:\s*(\d+)`)
 				postCountMatches := postCountPattern.FindStringSubmatch(infoText)
 				if len(postCountMatches) > 1 {
 					if count, err := strconv.Atoi(postCountMatches[1]); err == nil {
@@ -301,7 +322,6 @@ func (p *PostParser) ExtractAuthor(element *goquery.Selection) (*Author, error) 
 
 			// 提取注册时间
 			if author.RegisterDate == "" {
-				registerDatePattern := regexp.MustCompile(`注册时间:\s*([0-9\-]+)`)
 				registerDateMatches := registerDatePattern.FindStringSubmatch(infoText)
 				if len(registerDateMatches) > 1 {
 					author.RegisterDate = registerDateMatches[1]
@@ -310,7 +330,6 @@ func (p *PostParser) ExtractAuthor(element *goquery.Selection) (*Author, error) 
 
 			// 提取最后登录时间
 			if author.LastLogin == "" {
-				lastLoginPattern := regexp.MustCompile(`最后登录:\s*([0-9\-]+)`)
 				lastLoginMatches := lastLoginPattern.FindStringSubmatch(infoText)
 				if len(lastLoginMatches) > 1 {
 					author.LastLogin = lastLoginMatches[1]
@@ -415,8 +434,7 @@ func (p *PostParser) extractPostID(element *goquery.Selection) string {
 
 // extractUIDFromURL 从URL中提取UID
 func (p *PostParser) extractUIDFromURL(urlStr string) string {
-	re := regexp.MustCompile(`uid[=-](\d+)`)
-	matches := re.FindStringSubmatch(urlStr)
+	matches := uidURLPattern.FindStringSubmatch(urlStr)
 	if len(matches) > 1 {
 		return matches[1]
 	}
@@ -425,11 +443,8 @@ func (p *PostParser) extractUIDFromURL(urlStr string) string {
 
 // cleanHTMLContent 清理HTML内容
 func (p *PostParser) cleanHTMLContent(str string) string {
-	str = strings.Trim(str, "\n")
-	str = strings.Trim(str, " ")
-	str = strings.Trim(str, "\n")
-
-	return str
+	// 使用共享的清理函数确保一致性
+	return CleanHTMLContent(str)
 }
 
 // extractTID 提取帖子ID
@@ -442,8 +457,7 @@ func (p *PostParser) extractTID() string {
 			parts := strings.Split(titleText, "read.php?tid-")
 			if len(parts) > 1 {
 				tidPart := parts[1]
-				re := regexp.MustCompile(`(\d+)`)
-				matches := re.FindStringSubmatch(tidPart)
+				matches := digitsPattern.FindStringSubmatch(tidPart)
 				if len(matches) > 0 {
 					return matches[1]
 				}
@@ -457,8 +471,7 @@ func (p *PostParser) extractTID() string {
 		parts := strings.Split(baseURL, "tid-")
 		if len(parts) > 1 {
 			tidPart := parts[1]
-			re := regexp.MustCompile(`(\d+)`)
-			matches := re.FindStringSubmatch(tidPart)
+			matches := digitsPattern.FindStringSubmatch(tidPart)
 			if len(matches) > 0 {
 				return matches[1]
 			}
@@ -467,15 +480,23 @@ func (p *PostParser) extractTID() string {
 
 	// 尝试从页面中的链接中提取TID
 	tidElements := p.FindElements("a[href*='tid-']")
+	if tidElements == nil || tidElements.Length() == 0 {
+		return ""
+	}
+
+	// Cache DOM selections to avoid repeated Eq(i) calls
+	elements := make([]*goquery.Selection, tidElements.Length())
 	for i := 0; i < tidElements.Length(); i++ {
-		element := tidElements.Eq(i)
+		elements[i] = tidElements.Eq(i)
+	}
+
+	for _, element := range elements {
 		if href, exists := element.Attr("href"); exists {
 			if strings.Contains(href, "tid-") {
 				parts := strings.Split(href, "tid-")
 				if len(parts) > 1 {
 					tidPart := parts[1]
-					re := regexp.MustCompile(`(\d+)`)
-					matches := re.FindStringSubmatch(tidPart)
+					matches := digitsPattern.FindStringSubmatch(tidPart)
 					if len(matches) > 0 {
 						return matches[1]
 					}

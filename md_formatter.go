@@ -55,12 +55,10 @@ func (mf *MarkdownFormatter) FormatPopularReplies(post *Post, imageHandler *Imag
 			preview = ""
 		}
 		// 移除换行符，创建单行预览
-		preview = strings.ReplaceAll(preview, "\n", " ")
-		if len(preview) > 50 {
-			preview = preview[:50] + "..."
-		}
+		preview = ReplaceNewlines(preview, " ")
+		preview = TruncateText(preview, 50)
 
-		fmt.Fprintf(&md, "- [%s](#pid%s): %s\n", floorText, reply.PostID, mf.escapeMarkdown(preview))
+		fmt.Fprintf(&md, "- [%s](#pid%s): %s\n", floorText, reply.PostID, EscapeMarkdown(preview))
 	}
 	md.WriteString("\n")
 
@@ -119,31 +117,8 @@ func (mf *MarkdownFormatter) FormatFooter() string {
 	return md.String()
 }
 
-// escapeMarkdown 转义Markdown特殊字符
+// escapeMarkdown 转义Markdown特殊字符 (废弃的本地实现，使用共享的EscapeMarkdown)
+// 保留这个方法以避免破坏现有代码，但内部调用共享实现
 func (mf *MarkdownFormatter) escapeMarkdown(text string) string {
-	// 转义Markdown特殊字符
-	replacements := map[string]string{
-		"\\": "\\\\",
-		"`":  "\\`",
-		"*":  "\\*",
-		"_":  "\\_",
-		"{":  "\\{",
-		"}":  "\\}",
-		"[":  "\\[",
-		"]":  "\\]",
-		"(":  "\\(",
-		")":  "\\)",
-		"#":  "\\#",
-		"+":  "\\+",
-		"-":  "\\-",
-		".":  "\\.",
-		"!":  "\\!",
-		"|":  "\\|",
-	}
-
-	for old, new := range replacements {
-		text = strings.ReplaceAll(text, old, new)
-	}
-
-	return text
+	return EscapeMarkdown(text)
 }

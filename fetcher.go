@@ -8,11 +8,19 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+)
+
+// Pre-compiled regex patterns for better performance
+var (
+	pagesPattern = regexp.MustCompile(`Pages:\s*\d+/(\d+)`)
+	pageLinkPattern = regexp.MustCompile(`page-(\d+)`)
 )
 
 // Fetcher HTTP抓取器
@@ -62,15 +70,24 @@ func configureProxy() *http.Transport {
 
 // NewHTTPFetcher 创建新的HTTP抓取器
 func NewHTTPFetcher(config *HTTPOptions, baseURL string) *Fetcher {
-	// 创建 HTTP 客户端
-	client := &http.Client{
-		Timeout: config.Timeout,
+	// 创建带连接池的 HTTP 客户端
+	transport := configureProxy()
+	if transport == nil {
+		transport = &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 10,
+			IdleConnTimeout:     90 * time.Second,
+		}
+	} else {
+		// 如果已配置代理，确保代理传输也使用连接池
+		transport.MaxIdleConns = 100
+		transport.MaxIdleConnsPerHost = 10
+		transport.IdleConnTimeout = 90 * time.Second
 	}
 
-	// 配置代理
-	transport := configureProxy()
-	if transport != nil {
-		client.Transport = transport
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   config.Timeout,
 	}
 
 	fetcher := &Fetcher{
@@ -91,7 +108,7 @@ func NewHTTPFetcher(config *HTTPOptions, baseURL string) *Fetcher {
 // FetchPost 抓取指定TID的帖子内容
 func (f *Fetcher) FetchPost(tid string) (string, error) {
 	if tid == "" {
-		return "", fmt.Errorf("TID不能为空")
+		return "", NewValidationError("TID不能为空")
 	}
 
 	// 构建完整的URL
@@ -139,7 +156,7 @@ func (f *Fetcher) FetchURL(targetURL string) (string, error) {
 	// 读取响应内容
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("读取响应内容失败: %v", err)
+		return "", NewIOError("读取响应内容失败", err)
 	}
 
 	// 更新Cookie
@@ -200,7 +217,7 @@ func (f *Fetcher) FetchWithRetry(targetURL string) (*http.Response, error) {
 func (f *Fetcher) doRequest(targetURL string) (*http.Response, error) {
 	req, err := http.NewRequest("GET", targetURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %v", err)
+		return nil, NewNetworkError("创建请求失败", err)
 	}
 
 	// 设置User-Agent
@@ -245,7 +262,12 @@ func (f *Fetcher) doRequest(targetURL string) (*http.Response, error) {
 	}
 
 	// 执行请求
-	return f.client.Do(req)
+	resp, err := f.client.Do(req)
+	if err != nil {
+		return nil, NewNetworkError("执行HTTP请求失败", err)
+	}
+	
+	return resp, nil
 }
 
 // LoadCookies 从文件加载Cookie
@@ -292,22 +314,12 @@ func (f *Fetcher) FetchPostWithPagination(tid string, postParser *PostParser, se
 	// 添加第一页解析器
 	parsers = append(parsers, postParser)
 
-	// 获取剩余页面
-	for page := 2; page <= totalPages; page++ {
-		pageHTML, err := f.FetchPostWithPage(tid, page)
+	// 并发获取剩余页面
+	if totalPages > 1 {
+		parsers, err = f.fetchPagesConcurrently(tid, totalPages, selectors, parsers)
 		if err != nil {
-			slog.Error("Failed to fetch post page", "page", page, "error", err)
-			continue
+			return nil, err
 		}
-
-		// 创建新的解析器实例
-		pageParser := NewPostParser(selectors)
-		if err := pageParser.LoadFromString(pageHTML); err != nil {
-			slog.Error("Failed to parse HTML for page", "page", page, "error", err)
-			continue
-		}
-
-		parsers = append(parsers, pageParser)
 	}
 
 	// 从所有页面提取数据
@@ -323,6 +335,110 @@ func (f *Fetcher) FetchPostWithPagination(tid string, postParser *PostParser, se
 	return post, nil
 }
 
+// fetchPagesConcurrently 并发获取帖子的所有页面
+func (f *Fetcher) fetchPagesConcurrently(tid string, totalPages int, selectors *HTMLSelectors, parsers []*PostParser) ([]*PostParser, error) {
+	numWorkers := runtime.NumCPU()
+	if numWorkers > f.config.MaxConcurrent {
+		numWorkers = f.config.MaxConcurrent
+	}
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
+
+	tasks := make(chan PageFetchTask, totalPages-1)
+	results := make(chan PageFetchResult, totalPages-1)
+	var wg sync.WaitGroup
+
+	// 启动工作池
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go f.fetchPageWorker(tasks, results, selectors, &wg)
+	}
+
+	// 发送任务
+	go func() {
+		for page := 2; page <= totalPages; page++ {
+			tasks <- PageFetchTask{Page: page, TID: tid}
+		}
+		close(tasks)
+	}()
+
+	// 收集结果
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// 处理结果
+	pageParsers := make([]*PostParser, totalPages)
+	pageParsers[0] = parsers[0] // 第一页解析器
+
+	for result := range results {
+		if result.Error != nil {
+			slog.Error("Failed to fetch post page", "page", result.Page, "error", result.Error)
+			continue
+		}
+
+		pageParsers[result.Page-1] = result.Parser
+	}
+
+	// 过滤掉nil解析器
+	var validParsers []*PostParser
+	for _, parser := range pageParsers {
+		if parser != nil {
+			validParsers = append(validParsers, parser)
+		}
+	}
+
+	return validParsers, nil
+}
+
+// PageFetchTask represents a page fetching task
+type PageFetchTask struct {
+	Page int
+	TID  string
+}
+
+// PageFetchResult represents the result of a page fetch
+type PageFetchResult struct {
+	Page     int
+	HTML     string
+	Error    error
+	Parser   *PostParser
+}
+
+// fetchPageWorker is a worker that fetches pages concurrently
+func (f *Fetcher) fetchPageWorker(tasks <-chan PageFetchTask, results chan<- PageFetchResult, selectors *HTMLSelectors, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	for task := range tasks {
+		pageHTML, err := f.FetchPostWithPage(task.TID, task.Page)
+		if err != nil {
+			results <- PageFetchResult{
+				Page:  task.Page,
+				Error: err,
+			}
+			continue
+		}
+
+		// Create parser for this page
+		pageParser := NewPostParser(selectors)
+		if err := pageParser.LoadFromString(pageHTML); err != nil {
+			results <- PageFetchResult{
+				Page:  task.Page,
+				Error: err,
+			}
+			continue
+		}
+
+		results <- PageFetchResult{
+			Page:   task.Page,
+			HTML:   pageHTML,
+			Parser: pageParser,
+		}
+	}
+}
+
 // extractTotalPages 从页面中提取总页数
 func (f *Fetcher) extractTotalPages(parser *PostParser) int {
 	// 查找包含页数信息的元素
@@ -330,9 +446,8 @@ func (f *Fetcher) extractTotalPages(parser *PostParser) int {
 	pagesElement := parser.FindElement(".pagesone")
 	if pagesElement.Length() > 0 {
 		text := pagesElement.Text()
-		// 使用正则表达式提取总页数
-		re := regexp.MustCompile(`Pages:\s*\d+/(\d+)`)
-		matches := re.FindStringSubmatch(text)
+		// 使用预编译的正则表达式提取总页数
+		matches := pagesPattern.FindStringSubmatch(text)
 		if len(matches) > 1 {
 			if totalPages, err := strconv.Atoi(matches[1]); err == nil {
 				return totalPages
@@ -350,9 +465,8 @@ func (f *Fetcher) extractTotalPages(parser *PostParser) int {
 				return
 			}
 
-			// 使用正则表达式提取页码
-			re := regexp.MustCompile(`page-(\d+)`)
-			matches := re.FindStringSubmatch(href)
+			// 使用预编译的正则表达式提取页码
+			matches := pageLinkPattern.FindStringSubmatch(href)
 			if len(matches) > 1 {
 				if page, err := strconv.Atoi(matches[1]); err == nil && page > maxPage {
 					maxPage = page

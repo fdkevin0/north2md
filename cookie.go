@@ -259,7 +259,9 @@ func (cm *CookieManager) UpdateFromResponse(resp *http.Response) {
 // CleanExpired 清理过期Cookie
 func (cm *CookieManager) CleanExpired() {
 	now := time.Now()
-	var validCookies []CookieEntry
+	
+	// Pre-allocate slice with current capacity to reduce allocations
+	validCookies := make([]CookieEntry, 0, len(cm.jar.Cookies))
 
 	for _, cookie := range cm.jar.Cookies {
 		// 检查是否过期
