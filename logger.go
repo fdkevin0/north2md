@@ -10,7 +10,7 @@ import (
 
 // initLogger initializes the global slog logger with a text handler
 func initLogger(debug bool) {
-	level := slog.LevelInfo
+	level := slog.LevelWarn
 	if debug {
 		level = slog.LevelDebug
 	}

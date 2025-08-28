@@ -48,7 +48,7 @@ func (g *MarkdownGenerator) GenerateMarkdown(post *Post) (string, error) {
 	// 回复内容
 	if len(post.Replies) > 0 {
 		for i, reply := range post.Replies {
-			g.writeReplyPost(post.TID, &md, reply, i+1)
+			g.writeReplyPost(post.TID, &md, reply, i+1, post)
 		}
 	}
 
@@ -72,6 +72,24 @@ func (g *MarkdownGenerator) SavePost(post *Post, baseDir string) error {
 		return fmt.Errorf("创建images目录失败: %v", err)
 	}
 
+	// 检查是否存在现有metadata，如果存在则加载图片缓存信息
+	metadataFile := filepath.Join(tidDir, "metadata.toml")
+	if _, err := os.Stat(metadataFile); err == nil {
+		data, err := os.ReadFile(metadataFile)
+		if err == nil {
+			var existingPost Post
+			err = toml.Unmarshal(data, &existingPost)
+			if err == nil {
+				post.Images = existingPost.Images
+				slog.Info("Loaded existing image cache from metadata", "count", len(post.Images))
+			} else {
+				slog.Warn("Failed to unmarshal existing metadata", "error", err)
+			}
+		} else {
+			slog.Warn("Failed to read existing metadata", "error", err)
+		}
+	}
+
 	// 生成Markdown内容
 	markdown, err := g.GenerateMarkdown(post)
 	if err != nil {
@@ -90,7 +108,6 @@ func (g *MarkdownGenerator) SavePost(post *Post, baseDir string) error {
 		return fmt.Errorf("生成元数据失败: %v", err)
 	}
 
-	metadataFile := filepath.Join(tidDir, "metadata.toml")
 	if err := os.WriteFile(metadataFile, metadata, 0644); err != nil {
 		return fmt.Errorf("保存metadata.toml失败: %v", err)
 	}
@@ -126,18 +143,18 @@ func (g *MarkdownGenerator) writePopularReplies(md *strings.Builder, post *Post)
 // writeMainPost 写入主楼内容
 func (g *MarkdownGenerator) writeMainPost(md *strings.Builder, post *Post) {
 	// 主楼使用特殊的格式化方式
-	g.writePostWithComplexHeader(post.TID, md, post.MainPost, 0, "0")
+	g.writePostWithComplexHeader(post.TID, md, post.MainPost, 0, "0", post)
 	md.WriteString("\n")
 }
 
 // writeReplyPost 写入回复楼层内容
-func (g *MarkdownGenerator) writeReplyPost(tid string, md *strings.Builder, reply PostEntry, index int) {
-	g.writePostWithComplexHeader(tid, md, reply, index, reply.Floor)
+func (g *MarkdownGenerator) writeReplyPost(tid string, md *strings.Builder, reply PostEntry, index int, post *Post) {
+	g.writePostWithComplexHeader(tid, md, reply, index, reply.Floor, post)
 	md.WriteString("\n")
 }
 
 // writePostWithComplexHeader 使用复杂标题格式写入帖子
-func (g *MarkdownGenerator) writePostWithComplexHeader(tid string, md *strings.Builder, entry PostEntry, index int, floor string) {
+func (g *MarkdownGenerator) writePostWithComplexHeader(tid string, md *strings.Builder, entry PostEntry, index int, floor string, post *Post) {
 	// 复杂标题格式
 	floorDisplay := floor
 	if floor == "0" {
@@ -166,7 +183,7 @@ func (g *MarkdownGenerator) writePostWithComplexHeader(tid string, md *strings.B
 			os.Exit(1)
 		}
 
-		md2, err := downloadAndCacheImages(tid, []byte(markdown), "images")
+		md2, err := downloadAndCacheImages(tid, []byte(markdown), "images", post)
 		if err != nil {
 			slog.Error("Failed to download and cache images", "error", err)
 			os.Exit(1)

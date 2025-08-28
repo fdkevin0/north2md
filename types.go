@@ -13,6 +13,7 @@ type Post struct {
 	MainPost    PostEntry   `toml:"main_post"`    // 主楼内容
 	Replies     []PostEntry `toml:"replies"`      // 回复列表
 	TotalFloors int         `toml:"total_floors"` // 总楼层数
+	Images      []Image     `toml:"images"`       // 图片信息列表
 	CreatedAt   time.Time   `toml:"created_at"`   // 创建时间
 }
 
@@ -39,21 +40,11 @@ type Author struct {
 // Image 表示图片信息
 type Image struct {
 	URL          string `toml:"url"`           // 原始图片URL
-	LocalPath    string `toml:"local_path"`    // 本地缓存路径
+	Local        string `toml:"local"`         // 本地缓存路径
 	Alt          string `toml:"alt"`           // 图片描述
 	IsAttachment bool   `toml:"is_attachment"` // 是否为附件
 	FileSize     int64  `toml:"file_size"`     // 文件大小
 	Downloaded   bool   `toml:"downloaded"`    // 是否已下载
-}
-
-// Attachment 表示附件信息
-type Attachment struct {
-	URL        string `toml:"url"`        // 原始URL
-	LocalPath  string `toml:"local_path"` // 本地缓存路径
-	FileName   string `toml:"file_name"`  // 文件名
-	FileSize   int64  `toml:"file_size"`  // 文件大小
-	MimeType   string `toml:"mime_type"`  // 文件类型
-	Downloaded bool   `toml:"downloaded"` // 是否已下载
 }
 
 // CookieEntry 表示Cookie信息

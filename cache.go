@@ -28,10 +28,16 @@ type imageCache struct {
 
 // downloadAndCacheImages parses a markdown document, downloads all images,
 // and saves them to a cache directory named by their MD5 hash.
-func downloadAndCacheImages(tid string, mdDoc []byte, cacheDir string) ([]byte, error) {
+func downloadAndCacheImages(tid string, mdDoc []byte, cacheDir string, post *Post) ([]byte, error) {
 	cache := &imageCache{
 		mapping:  make(map[string]string),
 		cacheDir: cacheDir,
+	}
+
+	// Build map of existing images for quick lookup
+	existingImages := make(map[string]*Image)
+	for i := range post.Images {
+		existingImages[post.Images[i].URL] = &post.Images[i]
 	}
 
 	// Create a Goldmark instance for parsing
@@ -51,11 +57,18 @@ func downloadAndCacheImages(tid string, mdDoc []byte, cacheDir string) ([]byte, 
 			imageURL := string(img.Destination)
 
 			if isRemoteURL(imageURL) {
-				slog.Info("Downloading image", "url", imageURL)
-
 				if _, ok := cache.mapping[imageURL]; ok {
 					return ast.WalkContinue, nil
 				}
+
+				// Check if image already cached in metadata
+				if existing, ok := existingImages[imageURL]; ok && existing.Downloaded {
+					cache.mapping[imageURL] = existing.Local
+					slog.Info("Reusing cached image", "url", imageURL, "path", existing.Local)
+					return ast.WalkContinue, nil
+				}
+
+				slog.Info("Downloading image", "url", imageURL)
 
 				imageData, err := downloadImage(imageURL)
 				if err != nil {
@@ -67,12 +80,29 @@ func downloadAndCacheImages(tid string, mdDoc []byte, cacheDir string) ([]byte, 
 				filename := fmt.Sprintf("%x%s", hash, filepath.Ext(imageURL))
 				filePath := filepath.Join(tid, cache.cacheDir, filename)
 
-				if err := os.WriteFile(filePath, imageData, 0644); err != nil {
-					slog.Error("Failed to save image to cache", "path", filePath, "error", err)
-					return ast.WalkContinue, nil
+				// Check if file already exists
+				if _, err := os.Stat(filePath); err == nil {
+					slog.Info("Image file already exists, skipping write", "path", filePath)
+				} else {
+					if err := os.WriteFile(filePath, imageData, 0644); err != nil {
+						slog.Error("Failed to save image to cache", "path", filePath, "error", err)
+						return ast.WalkContinue, nil
+					}
 				}
+
 				slog.Info("Cached image successfully", "original_url", imageURL, "cached_path", filePath)
 				cache.mapping[imageURL] = filename
+
+				// Add to post images metadata
+				alt := string(img.Title)
+				image := Image{
+					URL:        imageURL,
+					Local:      filename,
+					Alt:        alt,
+					Downloaded: true,
+					FileSize:   int64(len(imageData)),
+				}
+				post.Images = append(post.Images, image)
 			}
 		}
 		return ast.WalkContinue, nil
