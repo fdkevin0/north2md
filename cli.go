@@ -15,20 +15,20 @@ var (
 	config *Config
 
 	// 命令行参数
-	flagTID           string
-	flagInputFile     string
-	flagOutputFile    string
-	flagCacheDir      string
-	flagBaseURL       string
+	flagTID        string
+	flagInputFile  string
+	flagOutputFile string
+	flagCacheDir   string
+	flagBaseURL    string
 	// 简化：移除部分不常用的参数
 	flagCookieFile    string
 	flagNoCache       bool
 	flagTimeout       int
 	flagMaxConcurrent int
-	
+
 	// Cookie相关参数
-	flagCurlCommand   string
-	flagCurlFile      string
+	flagCurlCommand string
+	flagCurlFile    string
 )
 
 // rootCmd 根命令
@@ -177,9 +177,6 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 	// 创建HTML解析器
 	htmlParser := NewHTMLParser()
 
-	// 创建附件下载器
-	downloader := NewAttachmentDownloader(httpClient, &config.CacheOpts)
-
 	// 创建Markdown生成器
 	markdownGenerator := NewMarkdownGenerator(&config.MarkdownOpts)
 
@@ -222,14 +219,6 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 	baseDir := outputDir
 	if config.OutputFile != "post.md" {
 		baseDir = filepath.Dir(config.OutputFile)
-	}
-
-	// 下载附件直接到帖子目录
-	if config.CacheOpts.EnableCache {
-		fmt.Println("正在下载附件...")
-		if err := downloader.DownloadAllToPostDir(post, baseDir); err != nil {
-			fmt.Printf("警告: 下载附件时出现错误: %v\n", err)
-		}
 	}
 
 	// 保存帖子

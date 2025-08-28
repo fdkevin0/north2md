@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"log"
 	"os"
@@ -12,10 +11,6 @@ import (
 	"github.com/BurntSushi/toml"
 	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
 	"github.com/JohannesKaufmann/html-to-markdown/v2/converter"
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/extension"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/renderer/html"
 )
 
 // MarkdownGenerator Markdown生成器
@@ -53,7 +48,7 @@ func (g *MarkdownGenerator) GenerateMarkdown(post *Post) (string, error) {
 	// 回复内容
 	if len(post.Replies) > 0 {
 		for i, reply := range post.Replies {
-			g.writeReplyPost(&md, reply, i+1)
+			g.writeReplyPost(post.TID, &md, reply, i+1)
 		}
 	}
 
@@ -122,7 +117,7 @@ func (g *MarkdownGenerator) writePopularReplies(md *strings.Builder, post *Post)
 		floorText := fmt.Sprintf("%s楼", reply.Floor)
 
 		// 提取回复内容的前50个字符作为预览
-		preview := strings.TrimSpace(reply.Content)
+		preview := strings.TrimSpace(reply.HTMLContent)
 		// 移除换行符，创建单行预览
 		preview = strings.ReplaceAll(preview, "\n", " ")
 		if len(preview) > 50 {
@@ -137,18 +132,18 @@ func (g *MarkdownGenerator) writePopularReplies(md *strings.Builder, post *Post)
 // writeMainPost 写入主楼内容
 func (g *MarkdownGenerator) writeMainPost(md *strings.Builder, post *Post) {
 	// 主楼使用特殊的格式化方式
-	g.writePostWithComplexHeader(md, post.MainPost, 0, "0")
+	g.writePostWithComplexHeader(post.TID, md, post.MainPost, 0, "0")
 	md.WriteString("\n")
 }
 
 // writeReplyPost 写入回复楼层内容
-func (g *MarkdownGenerator) writeReplyPost(md *strings.Builder, reply PostEntry, index int) {
-	g.writePostWithComplexHeader(md, reply, index, reply.Floor)
+func (g *MarkdownGenerator) writeReplyPost(tid string, md *strings.Builder, reply PostEntry, index int) {
+	g.writePostWithComplexHeader(tid, md, reply, index, reply.Floor)
 	md.WriteString("\n")
 }
 
 // writePostWithComplexHeader 使用复杂标题格式写入帖子
-func (g *MarkdownGenerator) writePostWithComplexHeader(md *strings.Builder, entry PostEntry, index int, floor string) {
+func (g *MarkdownGenerator) writePostWithComplexHeader(tid string, md *strings.Builder, entry PostEntry, index int, floor string) {
 	// 复杂标题格式
 	floorDisplay := floor
 	if floor == "0" {
@@ -176,35 +171,14 @@ func (g *MarkdownGenerator) writePostWithComplexHeader(md *strings.Builder, entr
 			log.Fatalln(err)
 		}
 
-		markdown, err = g.cacheImages([]byte(markdown))
+		md2, err := downloadAndCacheImages(tid, []byte(markdown), "images")
 		if err != nil {
 			log.Fatalln(err)
 		}
 
-		md.WriteString(markdown)
+		md.WriteString(string(md2))
 		md.WriteString("\n\n")
 	}
-}
-
-func (g *MarkdownGenerator) cacheImages(src []byte) (dst string, err error) {
-	var buf bytes.Buffer
-
-	md := goldmark.New(
-		goldmark.WithExtensions(extension.GFM),
-		goldmark.WithParserOptions(
-			parser.WithAutoHeadingID(),
-		),
-		goldmark.WithRendererOptions(
-			html.WithHardWraps(),
-			html.WithXHTML(),
-		),
-	)
-
-	if err = md.Convert(src, &buf); err != nil {
-		return
-	}
-
-	return buf.String(), nil
 }
 
 // writeFooter 写入文档尾部信息
@@ -212,44 +186,6 @@ func (g *MarkdownGenerator) writeFooter(md *strings.Builder, post *Post) {
 	md.WriteString("---\n\n")
 	md.WriteString("*本文档由 ngapost2md 自动生成*\n\n")
 	fmt.Fprintf(md, "*生成时间: %s*\n", time.Now().Format("2006-01-02 15:04:05"))
-
-	// 统计信息
-	totalImages := len(post.MainPost.Images)
-	totalAttachments := len(post.MainPost.Attachments)
-
-	for _, reply := range post.Replies {
-		totalImages += len(reply.Images)
-		totalAttachments += len(reply.Attachments)
-	}
-
-	if totalImages > 0 || totalAttachments > 0 {
-		md.WriteString("\n**统计信息**:\n\n")
-		if totalImages > 0 {
-			fmt.Fprintf(md, "- 图片数量: %d\n", totalImages)
-		}
-		if totalAttachments > 0 {
-			fmt.Fprintf(md, "- 附件数量: %d\n", totalAttachments)
-		}
-	}
-}
-
-// formatContent 格式化帖子内容
-func (g *MarkdownGenerator) formatContent(content string) string {
-	// 移除多余的空白行
-	content = strings.TrimSpace(content)
-
-	// 将内容按段落分割并重新组织
-	paragraphs := strings.Split(content, "\n")
-	var formattedParagraphs []string
-
-	for _, paragraph := range paragraphs {
-		paragraph = strings.TrimSpace(paragraph)
-		if paragraph != "" {
-			formattedParagraphs = append(formattedParagraphs, paragraph)
-		}
-	}
-
-	return strings.Join(formattedParagraphs, "\n\n")
 }
 
 // escapeMarkdown 转义Markdown特殊字符

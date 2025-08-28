@@ -165,7 +165,6 @@ func (e *DataExtractor) extractPostEntry(table *goquery.Selection, floor, baseUR
 		if html, err := contentElement.Html(); err == nil {
 			entry.HTMLContent = e.cleanHTMLContent(html)
 		}
-		entry.Content = e.cleanTextContent(contentElement.Text())
 	}
 
 	// 提取帖子ID
@@ -176,14 +175,6 @@ func (e *DataExtractor) extractPostEntry(table *goquery.Selection, floor, baseUR
 		// 提取图片
 		images := e.ExtractImages(contentElement.First(), baseURL)
 		entry.Images = images
-
-		// 提取附件
-		attachments := e.ExtractAttachments(table, baseURL)
-		entry.Attachments = attachments
-	} else {
-		// 如果没有内容元素，仍然尝试提取附件
-		attachments := e.ExtractAttachments(table, baseURL)
-		entry.Attachments = attachments
 	}
 
 	return entry, nil
@@ -315,52 +306,18 @@ func (e *DataExtractor) ExtractImages(element *goquery.Selection, baseURL string
 	return images
 }
 
-// ExtractAttachments 提取附件信息
-func (e *DataExtractor) ExtractAttachments(element *goquery.Selection, baseURL string) []Attachment {
-	var attachments []Attachment
-
-	element.Find("a[href*=\"attachment\"], a[href*=\"download\"]").Each(func(i int, link *goquery.Selection) {
-		href, exists := link.Attr("href")
-		if !exists || href == "" {
-			return
-		}
-
-		attachment := Attachment{
-			URL:      e.resolveURL(href, baseURL),
-			FileName: e.extractFileNameFromURL(href),
-		}
-
-		// 从链接文本中提取文件名
-		linkText := strings.TrimSpace(link.Text())
-		if linkText != "" && !strings.Contains(linkText, "http") {
-			attachment.FileName = linkText
-		}
-
-		// 尝试提取文件大小信息
-		parent := link.Parent()
-		if parent != nil && parent.Length() > 0 {
-			parentText := parent.Text()
-			attachment.FileSize = e.extractFileSize(parentText)
-		}
-
-		attachments = append(attachments, attachment)
-	})
-
-	return attachments
-}
-
 // 辅助方法
 
 // extractForumName 提取版块名称
 func (e *DataExtractor) extractForumName(element *goquery.Selection) string {
 	text := element.Text()
-	
+
 	// 通常版块名称在导航的最后一个链接中
 	parts := strings.Split(text, "»")
 	if len(parts) > 1 {
 		return strings.TrimSpace(parts[len(parts)-1])
 	}
-	
+
 	return strings.TrimSpace(text)
 }
 
@@ -438,48 +395,11 @@ func (e *DataExtractor) extractUIDFromURL(urlStr string) string {
 	return ""
 }
 
-// extractFileSize 从文本中提取文件大小
-func (e *DataExtractor) extractFileSize(text string) int64 {
-	re := regexp.MustCompile(`(\d+(?:\.\d+)?)\s*(KB|MB|GB|B)`)
-	matches := re.FindStringSubmatch(strings.ToUpper(text))
-	if len(matches) < 3 {
-		return 0
-	}
-
-	size, err := strconv.ParseFloat(matches[1], 64)
-	if err != nil {
-		return 0
-	}
-
-	unit := matches[2]
-	switch unit {
-	case "KB":
-		return int64(size * 1024)
-	case "MB":
-		return int64(size * 1024 * 1024)
-	case "GB":
-		return int64(size * 1024 * 1024 * 1024)
-	default:
-		return int64(size)
-	}
-}
-
-// cleanTextContent 清理文本内容
-func (e *DataExtractor) cleanTextContent(text string) string {
-	// 移除多余的空白字符
-	text = regexp.MustCompile(`\s+`).ReplaceAllString(text, " ")
-	
-	// 移除前后空白
-	text = strings.TrimSpace(text)
-	
-	return text
-}
-
 func (e *DataExtractor) cleanHTMLContent(str string) string {
 	str = strings.Trim(str, "\n")
 	str = strings.Trim(str, " ")
 	str = strings.Trim(str, "\n")
-	
+
 	return str
 }
 
@@ -521,23 +441,6 @@ func (e *DataExtractor) isAttachmentImage(img *goquery.Selection) bool {
 	}
 
 	return false
-}
-
-// extractFileNameFromURL 从URL中提取文件名
-func (e *DataExtractor) extractFileNameFromURL(urlStr string) string {
-	// 从URL路径中提取文件名
-	parts := strings.Split(urlStr, "/")
-	if len(parts) > 0 {
-		filename := parts[len(parts)-1]
-		
-		// 去除查询参数
-		if idx := strings.Index(filename, "?"); idx != -1 {
-			filename = filename[:idx]
-		}
-		
-		return filename
-	}
-	return ""
 }
 
 // resolveURL 解析URL

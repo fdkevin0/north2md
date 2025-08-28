@@ -18,14 +18,12 @@ type Post struct {
 
 // PostEntry 表示单个楼层的内容
 type PostEntry struct {
-	Floor       string       `toml:"floor"`        // 楼层标识(GF, B1F, B2F...)
-	Author      Author       `toml:"author"`       // 作者信息
-	Content     string       `toml:"content"`      // 帖子内容(纯文本)
-	HTMLContent string       `toml:"html_content"` // 原始HTML内容
-	Images      []Image      `toml:"images"`       // 图片列表
-	Attachments []Attachment `toml:"attachments"`  // 附件列表
-	PostTime    time.Time    `toml:"post_time"`    // 发帖时间
-	PostID      string       `toml:"post_id"`      // 帖子ID
+	Floor       string    `toml:"floor"`        // 楼层标识(GF, B1F, B2F...)
+	Author      Author    `toml:"author"`       // 作者信息
+	HTMLContent string    `toml:"html_content"` // 原始HTML内容
+	Images      []Image   `toml:"images"`       // 图片列表
+	PostTime    time.Time `toml:"post_time"`    // 发帖时间
+	PostID      string    `toml:"post_id"`      // 帖子ID
 }
 
 // Author 表示作者信息
