@@ -31,12 +31,6 @@ func (g *MarkdownGenerator) GenerateMarkdown(post *Post) (string, error) {
 	// 文档标题
 	md.WriteString(g.formatter.FormatTitle(post.Title))
 
-	// 归属信息
-	md.WriteString(g.formatter.FormatAttribution())
-
-	// 热门回复
-	md.WriteString(g.formatter.FormatPopularReplies(post, g.imageHandler))
-
 	md.WriteString("----\n\n")
 
 	// 主楼内容
@@ -121,4 +115,3 @@ func (g *MarkdownGenerator) SavePost(post *Post, baseDir string) error {
 
 	return nil
 }
-

@@ -44,21 +44,8 @@ func EscapeMarkdown(text string) string {
 	return result.String()
 }
 
-// TruncateText 截断文本到指定长度并添加省略号
-func TruncateText(text string, maxLength int) string {
-	if len(text) <= maxLength {
-		return text
-	}
-	return text[:maxLength] + "..."
-}
-
 // CleanHTMLContent 高效清理HTML内容
 func CleanHTMLContent(str string) string {
 	// 单次操作清理前后空白和换行
 	return strings.Trim(str, " \n\r\t")
-}
-
-// ReplaceNewlines 替换换行符为指定字符
-func ReplaceNewlines(text, replacement string) string {
-	return strings.ReplaceAll(text, "\n", replacement)
 }

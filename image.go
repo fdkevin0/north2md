@@ -19,13 +19,12 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
-	"golang.org/x/net/html"
 )
 
 // ImageHandler handles image downloading, caching and processing
 type ImageHandler struct {
-	cacheDir string
-	mapping  map[string]string
+	cacheDir   string
+	mapping    map[string]string
 	httpClient *http.Client
 }
 
@@ -87,7 +86,7 @@ func (ih *ImageHandler) DownloadAndCacheImages(tid string, mdDoc []byte, post *P
 	if estimatedImageCount == 0 {
 		estimatedImageCount = 10 // Default capacity
 	}
-	
+
 	imageNodes := make([]*ast.Image, 0, estimatedImageCount)
 	imageURLs := make([]string, 0, estimatedImageCount)
 
@@ -130,7 +129,7 @@ func (ih *ImageHandler) DownloadAndCacheImages(tid string, mdDoc []byte, post *P
 
 	// Step 3: Download images concurrently
 	ih.downloadImagesConcurrently(tid, imageURLs, post)
-	
+
 	// Step 4: Walk the AST again to replace URLs with cached paths
 	err = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -279,48 +278,4 @@ func (ih *ImageHandler) isRemoteURL(imageURL string) bool {
 		return false
 	}
 	return true
-}
-
-// ExtractText recursively traverses the HTML nodes and extracts all plain text.
-func (ih *ImageHandler) extractText(n *html.Node) string {
-	if n.Type == html.TextNode {
-		// Replace multiple spaces with a single space and trim.
-		text := strings.TrimSpace(n.Data)
-		if text != "" {
-			return text
-		}
-	}
-
-	// Skip script and style tags to avoid including code.
-	if n.Type == html.ElementNode && (n.Data == "script" || n.Data == "style") {
-		return ""
-	}
-
-	var builder strings.Builder
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		childText := ih.extractText(c)
-		if childText != "" {
-			// Add a space between text from different elements.
-			if builder.Len() > 0 && builder.String()[builder.Len()-1] != ' ' {
-				builder.WriteString(" ")
-			}
-			builder.WriteString(childText)
-		}
-	}
-	return builder.String()
-}
-
-// GetPlainTextFromHTML parses an HTML string and returns the pure text content.
-func (ih *ImageHandler) GetPlainTextFromHTML(htmlContent string) (string, error) {
-	doc, err := html.Parse(strings.NewReader(htmlContent))
-	if err != nil {
-		return "", err
-	}
-	text := ih.extractText(doc)
-
-	// Normalize spacing after extraction.
-	text = strings.Join(strings.Fields(text), " ")
-
-	// Use shared utility for efficient trimming
-	return CleanHTMLContent(text), nil
 }

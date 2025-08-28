@@ -26,45 +26,6 @@ func (mf *MarkdownFormatter) FormatTitle(title string) string {
 	return fmt.Sprintf("## %s\n\n", mf.escapeMarkdown(title))
 }
 
-// FormatAttribution formats the attribution information
-func (mf *MarkdownFormatter) FormatAttribution() string {
-	return "Made by north2md (c) fdkevin [GitHub Repo](https://github.com/fdkevin0/north2md)\n\n"
-}
-
-// FormatPopularReplies formats the popular replies section
-func (mf *MarkdownFormatter) FormatPopularReplies(post *Post, imageHandler *ImageHandler) string {
-	if len(post.Replies) == 0 {
-		return ""
-	}
-
-	var md strings.Builder
-	md.WriteString("##### 热门回复\n\n")
-
-	for i, reply := range post.Replies {
-		if i >= 10 { // 只显示前10个热门回复
-			break
-		}
-
-		// 生成楼层链接和文本
-		floorText := fmt.Sprintf("%s楼", reply.Floor)
-
-		// 提取回复内容的前50个字符作为预览
-		preview, err := imageHandler.GetPlainTextFromHTML(reply.HTMLContent)
-		if err != nil {
-			// If there's an error, just use empty string
-			preview = ""
-		}
-		// 移除换行符，创建单行预览
-		preview = ReplaceNewlines(preview, " ")
-		preview = TruncateText(preview, 50)
-
-		fmt.Fprintf(&md, "- [%s](#pid%s): %s\n", floorText, reply.PostID, EscapeMarkdown(preview))
-	}
-	md.WriteString("\n")
-
-	return md.String()
-}
-
 // FormatPostEntry formats a single post entry with complex header
 func (mf *MarkdownFormatter) FormatPostEntry(tid string, entry PostEntry, index int, floor string, post *Post, imageHandler *ImageHandler) (string, error) {
 	var md strings.Builder
@@ -112,7 +73,7 @@ func (mf *MarkdownFormatter) FormatPostEntry(tid string, entry PostEntry, index 
 func (mf *MarkdownFormatter) FormatFooter() string {
 	var md strings.Builder
 	md.WriteString("---\n\n")
-	md.WriteString("*本文档由 ngapost2md 自动生成*\n\n")
+	md.WriteString("*本文档由 north2md 自动生成*\n\n")
 	fmt.Fprintf(&md, "*生成时间: %s*\n", time.Now().Format("2006-01-02 15:04:05"))
 	return md.String()
 }
