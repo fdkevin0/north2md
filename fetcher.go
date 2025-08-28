@@ -5,6 +5,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -21,10 +23,54 @@ type Fetcher struct {
 	baseURL       string
 }
 
+// configureProxy 从环境变量配置代理
+func configureProxy() *http.Transport {
+	// 优先检查 HTTPS_PROXY，然后是 HTTP_PROXY
+	proxyURL := os.Getenv("HTTPS_PROXY")
+	if proxyURL == "" {
+		proxyURL = os.Getenv("HTTP_PROXY")
+	}
+
+	if proxyURL == "" {
+		return nil // 没有配置代理
+	}
+
+	// 解析代理 URL
+	parsedURL, err := url.Parse(proxyURL)
+	if err != nil {
+		slog.Warn("Invalid proxy URL detected", "proxy", proxyURL, "error", err)
+		return nil
+	}
+
+	// 获取 NO_PROXY 列表
+	noProxy := os.Getenv("NO_PROXY")
+
+	// 创建带代理的 Transport
+	transport := &http.Transport{
+		Proxy: http.ProxyURL(parsedURL),
+	}
+
+	// 如果有 NO_PROXY，设置代理忽略规则
+	if noProxy != "" {
+		slog.Warn("Using proxy with bypass rules", "proxy", proxyURL, "no_proxy", noProxy)
+	} else {
+		slog.Warn("Using proxy server", "proxy", proxyURL)
+	}
+
+	return transport
+}
+
 // NewHTTPFetcher 创建新的HTTP抓取器
 func NewHTTPFetcher(config *HTTPOptions, baseURL string) *Fetcher {
+	// 创建 HTTP 客户端
 	client := &http.Client{
 		Timeout: config.Timeout,
+	}
+
+	// 配置代理
+	transport := configureProxy()
+	if transport != nil {
+		client.Transport = transport
 	}
 
 	fetcher := &Fetcher{
