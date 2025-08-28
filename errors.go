@@ -10,22 +10,22 @@ type ErrorType string
 const (
 	// NetworkError represents network-related errors
 	NetworkError ErrorType = "network_error"
-	
+
 	// ParseError represents parsing-related errors
 	ParseError ErrorType = "parse_error"
-	
+
 	// ValidationError represents validation-related errors
 	ValidationError ErrorType = "validation_error"
-	
+
 	// IOError represents I/O-related errors
 	IOError ErrorType = "io_error"
-	
+
 	// ConfigError represents configuration-related errors
 	ConfigError ErrorType = "config_error"
-	
+
 	// AuthError represents authentication-related errors
 	AuthError ErrorType = "auth_error"
-	
+
 	// DownloadError represents download-related errors
 	DownloadError ErrorType = "download_error"
 )
@@ -49,30 +49,6 @@ func (e *AppError) Error() string {
 // Unwrap implements the error unwrapping interface
 func (e *AppError) Unwrap() error {
 	return e.Err
-}
-
-// IsNetworkError checks if an error is a network error
-func IsNetworkError(err error) bool {
-	if appErr, ok := err.(*AppError); ok {
-		return appErr.Type == NetworkError
-	}
-	return false
-}
-
-// IsParseError checks if an error is a parsing error
-func IsParseError(err error) bool {
-	if appErr, ok := err.(*AppError); ok {
-		return appErr.Type == ParseError
-	}
-	return false
-}
-
-// IsValidationError checks if an error is a validation error
-func IsValidationError(err error) bool {
-	if appErr, ok := err.(*AppError); ok {
-		return appErr.Type == ValidationError
-	}
-	return false
 }
 
 // NewNetworkError creates a new network error
@@ -111,33 +87,5 @@ func NewIOError(message string, err error) *AppError {
 		Message: message,
 		Err:     err,
 		Code:    "IO001",
-	}
-}
-
-// NewConfigError creates a new configuration error
-func NewConfigError(message string) *AppError {
-	return &AppError{
-		Type:    ConfigError,
-		Message: message,
-		Code:    "CONFIG001",
-	}
-}
-
-// NewAuthError creates a new authentication error
-func NewAuthError(message string) *AppError {
-	return &AppError{
-		Type:    AuthError,
-		Message: message,
-		Code:    "AUTH001",
-	}
-}
-
-// NewDownloadError creates a new download error
-func NewDownloadError(message string, err error) *AppError {
-	return &AppError{
-		Type:    DownloadError,
-		Message: message,
-		Err:     err,
-		Code:    "DL001",
 	}
 }

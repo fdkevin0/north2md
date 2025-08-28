@@ -259,7 +259,7 @@ func (cm *CookieManager) UpdateFromResponse(resp *http.Response) {
 // CleanExpired 清理过期Cookie
 func (cm *CookieManager) CleanExpired() {
 	now := time.Now()
-	
+
 	// Pre-allocate slice with current capacity to reduce allocations
 	validCookies := make([]CookieEntry, 0, len(cm.jar.Cookies))
 
@@ -267,12 +267,6 @@ func (cm *CookieManager) CleanExpired() {
 		// 检查是否过期
 		if !cookie.Expires.IsZero() && cookie.Expires.Before(now) {
 			continue // 跳过过期Cookie
-		}
-
-		// 检查MaxAge
-		if cookie.MaxAge > 0 {
-			// 这里需要Cookie的创建时间，但我们没有存储，所以暂时保留
-			// 在实际实现中，可能需要添加CreatedAt字段
 		}
 
 		validCookies = append(validCookies, cookie)

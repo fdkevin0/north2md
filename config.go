@@ -90,13 +90,12 @@ type MarkdownOptions struct {
 	FloorNumbering    bool   `toml:"floor_numbering"`
 }
 
-
 // Default configuration values (centralized for maintainability)
 var defaultConfig = &Config{
 	BaseURL:    "https://north-plus.net/",
 	OutputFile: "post.md",
 	CacheDir:   "./cache",
-	
+
 	// CSS选择器配置
 	SelectorTitle:       "h1#subject_tpc",
 	SelectorForum:       "#breadcrumbs .crumbs-item.gray3:nth-child(3)",
@@ -109,7 +108,7 @@ var defaultConfig = &Config{
 	SelectorAvatar:      "img[src*=\"avatar\"]",
 	SelectorImages:      "img",
 	SelectorAttachments: "a[href*=\"attachment\"]",
-	
+
 	// HTTP配置
 	HTTPTimeout:       30 * time.Second,
 	HTTPUserAgent:     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
@@ -119,7 +118,7 @@ var defaultConfig = &Config{
 	HTTPCookieFile:    "./cookies.toml",
 	HTTPEnableCookie:  true,
 	HTTPCustomHeaders: make(map[string]string),
-	
+
 	// Markdown配置
 	MarkdownIncludeAuthorInfo: true,
 	MarkdownIncludeImages:     true,
@@ -127,7 +126,7 @@ var defaultConfig = &Config{
 	MarkdownTableOfContents:   true,
 	MarkdownIncludeTOC:        true,
 	MarkdownFloorNumbering:    true,
-	
+
 	// 缓存配置
 	CacheEnableCache:  true,
 	CacheCacheImages:  true,
@@ -140,47 +139,4 @@ var defaultConfig = &Config{
 func NewDefaultConfig() *Config {
 	config := *defaultConfig // Copy defaults
 	return &config
-}
-
-// GetHTTPOptions 返回HTTP配置 (向后兼容)
-func (c *Config) GetHTTPOptions() *HTTPOptions {
-	return &HTTPOptions{
-		Timeout:       c.HTTPTimeout,
-		UserAgent:     c.HTTPUserAgent,
-		MaxRetries:    c.HTTPMaxRetries,
-		RetryDelay:    c.HTTPRetryDelay,
-		MaxConcurrent: c.HTTPMaxConcurrent,
-		CookieFile:    c.HTTPCookieFile,
-		EnableCookie:  c.HTTPEnableCookie,
-		CustomHeaders: c.HTTPCustomHeaders,
-	}
-}
-
-// GetHTMLSelectors 返回CSS选择器配置 (向后兼容)
-func (c *Config) GetHTMLSelectors() *HTMLSelectors {
-	return &HTMLSelectors{
-		Title:       c.SelectorTitle,
-		Forum:       c.SelectorForum,
-		PostTable:   c.SelectorPostTable,
-		AuthorName:  c.SelectorAuthorName,
-		PostTime:    c.SelectorPostTime,
-		PostContent: c.SelectorPostContent,
-		Floor:       c.SelectorFloor,
-		AuthorInfo:  c.SelectorAuthorInfo,
-		Avatar:      c.SelectorAvatar,
-		Images:      c.SelectorImages,
-		Attachments: c.SelectorAttachments,
-	}
-}
-
-// GetMarkdownOptions 返回Markdown生成选项 (向后兼容)
-func (c *Config) GetMarkdownOptions() *MarkdownOptions {
-	return &MarkdownOptions{
-		IncludeAuthorInfo: c.MarkdownIncludeAuthorInfo,
-		IncludeImages:     c.MarkdownIncludeImages,
-		ImageStyle:        c.MarkdownImageStyle,
-		TableOfContents:   c.MarkdownTableOfContents,
-		IncludeTOC:        c.MarkdownIncludeTOC,
-		FloorNumbering:    c.MarkdownFloorNumbering,
-	}
 }
