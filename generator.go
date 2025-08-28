@@ -128,7 +128,10 @@ func (g *MarkdownGenerator) writePopularReplies(md *strings.Builder, post *Post)
 		floorText := fmt.Sprintf("%s楼", reply.Floor)
 
 		// 提取回复内容的前50个字符作为预览
-		preview := strings.TrimSpace(reply.HTMLContent)
+		preview, err := GetPlainTextFromHTML(reply.HTMLContent)
+		if err != nil {
+			slog.Warn("failed to parse popular", "error", err)
+		}
 		// 移除换行符，创建单行预览
 		preview = strings.ReplaceAll(preview, "\n", " ")
 		if len(preview) > 50 {

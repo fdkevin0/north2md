@@ -11,6 +11,7 @@ require (
 	github.com/samber/lo v1.51.0
 	github.com/spf13/cobra v1.9.1
 	github.com/yuin/goldmark v1.7.13
+	golang.org/x/net v0.43.0
 )
 
 require (
@@ -20,6 +21,5 @@ require (
 	github.com/spf13/pflag v1.0.7 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
-	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 )
