@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -74,7 +74,7 @@ func (f *HTTPFetcher) FetchPostWithPage(tid string, page int) (string, error) {
 		return "", fmt.Errorf("TID不能为空")
 	}
 
-	log.Printf("正在抓取帖子：%s, page: %d", tid, page)
+	slog.Info("Fetching post", "tid", tid, "page", page)
 
 	// 构建完整的URL，包含页码参数
 	postURL := f.buildPostURL(tid, page)
@@ -116,7 +116,7 @@ func (f *HTTPFetcher) FetchWithRetry(targetURL string) (*http.Response, error) {
 		if attempt > 0 {
 			// 等待重试间隔
 			time.Sleep(f.config.RetryDelay)
-			fmt.Printf("重试第 %d 次请求: %s\n", attempt, targetURL)
+			slog.Info("Retrying request", "attempt", attempt, "url", targetURL)
 		}
 
 		resp, err := f.doRequest(targetURL)
@@ -268,14 +268,14 @@ func (f *OnlinePostFetcher) FetchPost(tid string) (*Post, error) {
 	for page := 2; page <= totalPages; page++ {
 		pageHTML, err := f.httpFetcher.FetchPostWithPage(tid, page)
 		if err != nil {
-			fmt.Printf("获取帖子第%d页失败: %v\n", page, err)
+			slog.Error("Failed to fetch post page", "page", page, "error", err)
 			continue
 		}
 
 		// 创建新的解析器实例
 		pageParser := NewHTMLParser()
 		if err := pageParser.LoadFromString(pageHTML); err != nil {
-			fmt.Printf("解析第%d页HTML失败: %v\n", page, err)
+			slog.Error("Failed to parse HTML for page", "page", page, "error", err)
 			continue
 		}
 

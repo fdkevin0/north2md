@@ -5,7 +5,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -51,7 +51,7 @@ func downloadAndCacheImages(tid string, mdDoc []byte, cacheDir string) ([]byte, 
 			imageURL := string(img.Destination)
 
 			if isRemoteURL(imageURL) {
-				log.Printf("Downloading image from: %s", imageURL)
+				slog.Info("Downloading image", "url", imageURL)
 
 				if _, ok := cache.mapping[imageURL]; ok {
 					return ast.WalkContinue, nil
@@ -59,7 +59,7 @@ func downloadAndCacheImages(tid string, mdDoc []byte, cacheDir string) ([]byte, 
 
 				imageData, err := downloadImage(imageURL)
 				if err != nil {
-					log.Printf("error downloading image %s: %v", imageURL, err)
+					slog.Error("Failed to download image", "url", imageURL, "error", err)
 					return ast.WalkContinue, nil
 				}
 
@@ -68,10 +68,10 @@ func downloadAndCacheImages(tid string, mdDoc []byte, cacheDir string) ([]byte, 
 				filePath := filepath.Join(tid, cache.cacheDir, filename)
 
 				if err := os.WriteFile(filePath, imageData, 0644); err != nil {
-					log.Printf("error saving image to cache %s: %v", filePath, err)
+					slog.Error("Failed to save image to cache", "path", filePath, "error", err)
 					return ast.WalkContinue, nil
 				}
-				log.Printf("Cached image %s as %s", imageURL, filePath)
+				slog.Info("Cached image successfully", "original_url", imageURL, "cached_path", filePath)
 				cache.mapping[imageURL] = filename
 			}
 		}
@@ -98,7 +98,7 @@ func downloadAndCacheImages(tid string, mdDoc []byte, cacheDir string) ([]byte, 
 					// Path is relative to the markdown file location (tid/post.md -> tid/images/filename)
 					newPath := filepath.Join(cache.cacheDir, cachedFile)
 					img.Destination = []byte(newPath)
-					log.Printf("Updated image path for %s to %s", originalURL, newPath)
+					slog.Info("Updated image path", "original_url", originalURL, "new_path", newPath)
 				}
 			}
 		}

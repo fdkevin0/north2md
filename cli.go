@@ -25,6 +25,7 @@ var (
 	flagNoCache       bool
 	flagTimeout       int
 	flagMaxConcurrent int
+	flagDebug         bool
 
 	// Cookie相关参数
 	flagCurlCommand string
@@ -89,6 +90,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&flagBaseURL, "base-url", "https://north-plus.net/", "论坛基础URL")
 	rootCmd.PersistentFlags().StringVar(&flagCookieFile, "cookie-file", "./cookies.toml", "Cookie文件路径")
 	rootCmd.PersistentFlags().BoolVar(&flagNoCache, "no-cache", false, "禁用附件缓存")
+	rootCmd.PersistentFlags().BoolVar(&flagDebug, "debug", false, "启用调试日志")
 	rootCmd.PersistentFlags().IntVar(&flagTimeout, "timeout", 30, "HTTP请求超时(秒)")
 	rootCmd.PersistentFlags().IntVar(&flagMaxConcurrent, "max-concurrent", 5, "最大并发下载数")
 
@@ -165,6 +167,9 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 	if err := initConfig(); err != nil {
 		return fmt.Errorf("初始化配置失败: %v", err)
 	}
+
+	// 初始化日志系统
+	initLogger(flagDebug)
 
 	// 如果提供了位置参数，确保TID被正确设置
 	if len(args) > 0 && config.TID == "" {

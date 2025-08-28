@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -162,12 +162,14 @@ func (g *MarkdownGenerator) writePostWithComplexHeader(tid string, md *strings.B
 			converter.WithDomain("https://north-plus.net/"),
 		)
 		if err != nil {
-			log.Fatalln(err)
+			slog.Error("Failed to convert HTML to markdown", "error", err)
+			os.Exit(1)
 		}
 
 		md2, err := downloadAndCacheImages(tid, []byte(markdown), "images")
 		if err != nil {
-			log.Fatalln(err)
+			slog.Error("Failed to download and cache images", "error", err)
+			os.Exit(1)
 		}
 
 		md.WriteString(string(md2))

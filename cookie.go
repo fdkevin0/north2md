@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -103,7 +103,7 @@ func (cm *DefaultCookieManager) LoadFromFile(filepath string) error {
 	if !lo.ContainsBy(cm.jar.Cookies, func(item CookieEntry) bool {
 		return item.Name == "eb9e6_winduser"
 	}) {
-		log.Println("not login, clear cookies")
+		slog.Warn("User not logged in, clearing cookies")
 		cm.ClearCookies()
 	}
 

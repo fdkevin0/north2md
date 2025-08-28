@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
@@ -86,7 +87,7 @@ func (e *DataExtractor) ExtractPostFromMultiplePages(parsers []*HTMLParser) (*Po
 	for i := 1; i < len(parsers); i++ {
 		replies, err := e.ExtractReplies(parsers[i])
 		if err != nil {
-			fmt.Printf("提取第%d页回复失败: %v\n", i+1, err)
+			slog.Error("Failed to extract replies from page", "page", i+1, "error", err)
 			continue
 		}
 
@@ -130,7 +131,7 @@ func (e *DataExtractor) ExtractReplies(parser *HTMLParser) ([]PostEntry, error) 
 
 		entry, err := e.extractPostEntry(table, floorNumber, parser.GetBaseURL())
 		if err != nil {
-			fmt.Printf("提取第%d楼失败: %v\n", i, err)
+			slog.Error("Failed to extract floor", "floor", i, "error", err)
 			continue
 		}
 

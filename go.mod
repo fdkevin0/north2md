@@ -6,6 +6,7 @@ require (
 	github.com/BurntSushi/toml v1.5.0
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.4.0
 	github.com/PuerkitoBio/goquery v1.10.3
+	github.com/lmittmann/tint v1.1.2
 	github.com/r3labs/diff/v3 v3.0.2
 	github.com/samber/lo v1.51.0
 	github.com/spf13/cobra v1.9.1
