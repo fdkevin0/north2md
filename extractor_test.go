@@ -34,7 +34,6 @@ func TestExtractPostDataFromHTML(t *testing.T) {
 		AuthorInfo:  ".tiptop .tar",
 		Avatar:      "img[src*=\"avatar\"]",
 		Images:      "img",
-		Attachments: "a[href*=\"attachment\"]",
 	})
 	parser.LoadFromReader(bytes.NewBuffer(sourcePostHTML))
 

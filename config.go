@@ -25,7 +25,6 @@ type Config struct {
 	SelectorAuthorInfo  string `toml:"author_info"`  // 作者信息区域选择器
 	SelectorAvatar      string `toml:"avatar"`       // 头像选择器
 	SelectorImages      string `toml:"images"`       // 图片选择器
-	SelectorAttachments string `toml:"attachments"`  // 附件选择器
 
 	// HTTP请求配置
 	HTTPTimeout       time.Duration     `toml:"timeout"`        // 请求超时时间
@@ -77,7 +76,6 @@ type HTMLSelectors struct {
 	AuthorInfo  string `toml:"author_info"`
 	Avatar      string `toml:"avatar"`
 	Images      string `toml:"images"`
-	Attachments string `toml:"attachments"`
 }
 
 // MarkdownOptions Markdown生成选项 (向后兼容)
@@ -107,7 +105,6 @@ var defaultConfig = &Config{
 	SelectorAuthorInfo:  ".tiptop .tar",
 	SelectorAvatar:      "img[src*=\"avatar\"]",
 	SelectorImages:      "img",
-	SelectorAttachments: "a[href*=\"attachment\"]",
 
 	// HTTP配置
 	HTTPTimeout:       30 * time.Second,

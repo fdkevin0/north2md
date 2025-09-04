@@ -6,3 +6,5 @@ cache
 north2md
 *.html
 *.toml
+.gemini/
+gha-creds-*.json

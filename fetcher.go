@@ -68,8 +68,8 @@ func configureProxy() *http.Transport {
 	return transport
 }
 
-// NewHTTPFetcher 创建新的HTTP抓取器
-func NewHTTPFetcher(config *HTTPOptions, baseURL string) *Fetcher {
+// NewHTTPClient 创建一个新的HTTP客户端
+func NewHTTPClient(config *HTTPOptions) *http.Client {
 	// 创建带连接池的 HTTP 客户端
 	transport := configureProxy()
 	if transport == nil {
@@ -85,11 +85,14 @@ func NewHTTPFetcher(config *HTTPOptions, baseURL string) *Fetcher {
 		transport.IdleConnTimeout = 90 * time.Second
 	}
 
-	client := &http.Client{
+	return &http.Client{
 		Transport: transport,
 		Timeout:   config.Timeout,
 	}
+}
 
+// NewFetcher 创建新的HTTP抓取器
+func NewFetcher(client *http.Client, config *HTTPOptions, baseURL string) *Fetcher {
 	fetcher := &Fetcher{
 		client:        client,
 		config:        config,

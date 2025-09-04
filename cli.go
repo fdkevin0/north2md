@@ -55,6 +55,9 @@ var rootCmd = &cobra.Command{
   # 指定缓存目录
   north2md 2636739 --cache-dir=./cache --output=post.md`,
 	RunE: runExtractor,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		initLogger(flagDebug)
+	},
 	Args: cobra.MaximumNArgs(1), // 允许最多一个位置参数
 }
 
@@ -168,16 +171,13 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("初始化配置失败: %v", err)
 	}
 
-	// 初始化日志系统
-	initLogger(flagDebug)
-
 	// 如果提供了位置参数，确保TID被正确设置
 	if len(args) > 0 && config.TID == "" {
 		config.TID = args[0]
 	}
 
 	// 创建HTTP客户端
-	httpClient := NewHTTPFetcher(&HTTPOptions{
+	httpOptions := &HTTPOptions{
 		Timeout:       config.HTTPTimeout,
 		UserAgent:     config.HTTPUserAgent,
 		MaxRetries:    config.HTTPMaxRetries,
@@ -186,7 +186,11 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 		CookieFile:    config.HTTPCookieFile,
 		EnableCookie:  config.HTTPEnableCookie,
 		CustomHeaders: config.HTTPCustomHeaders,
-	}, config.BaseURL)
+	}
+	client := NewHTTPClient(httpOptions)
+
+	// 创建Fetcher
+	httpClient := NewFetcher(client, httpOptions, config.BaseURL)
 
 	// 创建帖子解析器
 	postParser := NewPostParser(&HTMLSelectors{
@@ -200,7 +204,6 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 		AuthorInfo:  config.SelectorAuthorInfo,
 		Avatar:      config.SelectorAvatar,
 		Images:      config.SelectorImages,
-		Attachments: config.SelectorAttachments,
 	})
 
 	// 创建Markdown生成器
@@ -230,7 +233,6 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 			AuthorInfo:  config.SelectorAuthorInfo,
 			Avatar:      config.SelectorAvatar,
 			Images:      config.SelectorImages,
-			Attachments: config.SelectorAttachments,
 		})
 		if err != nil {
 			return fmt.Errorf("抓取帖子失败: %v", err)
