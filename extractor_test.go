@@ -1,4 +1,4 @@
-package main_test
+package north2md_test
 
 import (
 	"bytes"

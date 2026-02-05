@@ -1,4 +1,4 @@
-package main
+package north2md
 
 import (
 	"fmt"

@@ -1,4 +1,4 @@
-package main
+package north2md
 
 import (
 	"log/slog"
@@ -8,8 +8,8 @@ import (
 	"github.com/lmittmann/tint"
 )
 
-// initLogger initializes the global slog logger with a text handler
-func initLogger(debug bool) {
+// InitLogger initializes the global slog logger with a text handler.
+func InitLogger(debug bool) {
 	level := slog.LevelWarn
 	if debug {
 		level = slog.LevelDebug

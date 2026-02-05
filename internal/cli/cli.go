@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"fmt"
@@ -7,12 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fdkevin0/north2md"
 	"github.com/spf13/cobra"
 )
 
 var (
 	// 全局配置
-	config *Config
+	config *north2md.Config
 
 	// 命令行参数
 	flagTID        string
@@ -56,7 +57,7 @@ var rootCmd = &cobra.Command{
   north2md 2636739 --cache-dir=./cache --output=post.md`,
 	RunE: runExtractor,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		initLogger(flagDebug)
+		north2md.InitLogger(flagDebug)
 	},
 	Args: cobra.MaximumNArgs(1), // 允许最多一个位置参数
 }
@@ -83,7 +84,7 @@ var cookieImportCmd = &cobra.Command{
 
 func init() {
 	// 初始化默认配置
-	config = NewDefaultConfig()
+	config = north2md.NewDefaultConfig()
 
 	// 根命令参数
 	rootCmd.PersistentFlags().StringVar(&flagTID, "tid", "", "帖子ID (用于在线抓取)")
@@ -177,7 +178,7 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 	}
 
 	// 创建HTTP客户端
-	httpOptions := &HTTPOptions{
+	httpOptions := &north2md.HTTPOptions{
 		Timeout:       config.HTTPTimeout,
 		UserAgent:     config.HTTPUserAgent,
 		MaxRetries:    config.HTTPMaxRetries,
@@ -187,13 +188,13 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 		EnableCookie:  config.HTTPEnableCookie,
 		CustomHeaders: config.HTTPCustomHeaders,
 	}
-	client := NewHTTPClient(httpOptions)
+	client := north2md.NewHTTPClient(httpOptions)
 
 	// 创建Fetcher
-	httpClient := NewFetcher(client, httpOptions, config.BaseURL)
+	httpClient := north2md.NewFetcher(client, httpOptions, config.BaseURL)
 
 	// 创建帖子解析器
-	postParser := NewPostParser(&HTMLSelectors{
+	postParser := north2md.NewPostParser(&north2md.HTMLSelectors{
 		Title:       config.SelectorTitle,
 		Forum:       config.SelectorForum,
 		PostTable:   config.SelectorPostTable,
@@ -207,7 +208,7 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 	})
 
 	// 创建Markdown生成器
-	markdownGenerator := NewMarkdownGenerator(&MarkdownOptions{
+	markdownGenerator := north2md.NewMarkdownGenerator(&north2md.MarkdownOptions{
 		IncludeAuthorInfo: config.MarkdownIncludeAuthorInfo,
 		IncludeImages:     config.MarkdownIncludeImages,
 		ImageStyle:        config.MarkdownImageStyle,
@@ -217,12 +218,12 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 	})
 
 	// 获取帖子内容
-	var post *Post
+	var post *north2md.Post
 	var err error
 
 	if config.TID != "" {
 		// 在线抓取模式
-		post, err = httpClient.FetchPostWithPagination(config.TID, postParser, &HTMLSelectors{
+		post, err = httpClient.FetchPostWithPagination(config.TID, postParser, &north2md.HTMLSelectors{
 			Title:       config.SelectorTitle,
 			Forum:       config.SelectorForum,
 			PostTable:   config.SelectorPostTable,

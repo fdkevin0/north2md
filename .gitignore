@@ -3,7 +3,6 @@ cache
 *.md
 *.txt
 *.json
-north2md
 *.html
 *.toml
 .gemini/
