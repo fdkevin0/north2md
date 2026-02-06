@@ -35,8 +35,7 @@ var (
 	flagGofileSkipExisting bool
 
 	// Cookie相关参数
-	flagCurlCommand string
-	flagCurlFile    string
+	flagCookieImportFile string
 )
 
 // rootCmd 根命令
@@ -54,7 +53,7 @@ var rootCmd = &cobra.Command{
   south2md --tid=2636739 --output=post.md
 
   # 使用Cookie文件登录
-  south2md 2636739 --cookie-file=./cookies.toml --output=post.md
+  south2md 2636739 --cookie-file=./cookies.txt --output=post.md
 
   # 解析本地HTML文件
   south2md --input=post.html --output=post.md
@@ -78,13 +77,10 @@ var cookieCmd = &cobra.Command{
 // cookieImportCmd cookie导入命令
 var cookieImportCmd = &cobra.Command{
 	Use:   "import",
-	Short: "从 curl 命令导入 cookie",
-	Long:  `从 curl 命令或包含 curl 命令的文件中解析并导入 cookie`,
-	Example: `  # 从 curl 命令导入 cookie
-  south2md cookie import --curl="curl 'https://example.com' -b 'session=abc123'"
-
-  # 从文件导入 curl 命令
-  south2md cookie import --file=./curl.txt`,
+	Short: "Import a Netscape cookie file",
+	Long:  `Import a Netscape cookie file and cache it to the user data dir`,
+	Example: `  # Import a Netscape cookie file
+  south2md cookie import --file=./cookies.txt`,
 	RunE: runCookieImport,
 }
 
@@ -96,9 +92,9 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&flagTID, "tid", "", "帖子ID (用于在线抓取)")
 	rootCmd.PersistentFlags().StringVar(&flagInputFile, "input", "", "输入HTML文件路径")
 	rootCmd.PersistentFlags().StringVar(&flagOutputFile, "output", "post.md", "输出Markdown文件路径")
-	rootCmd.PersistentFlags().StringVar(&flagCacheDir, "cache-dir", "./cache", "附件缓存目录")
+	rootCmd.PersistentFlags().StringVar(&flagCacheDir, "cache-dir", config.CacheDir, "附件缓存目录")
 	rootCmd.PersistentFlags().StringVar(&flagBaseURL, "base-url", "https://south-plus.net/", "论坛基础URL")
-	rootCmd.PersistentFlags().StringVar(&flagCookieFile, "cookie-file", "./cookies.toml", "Cookie文件路径")
+	rootCmd.PersistentFlags().StringVar(&flagCookieFile, "cookie-file", config.HTTPCookieFile, "Cookie file path (Netscape format)")
 	rootCmd.PersistentFlags().BoolVar(&flagNoCache, "no-cache", false, "禁用附件缓存")
 	rootCmd.PersistentFlags().BoolVar(&flagDebug, "debug", false, "启用调试日志")
 	rootCmd.PersistentFlags().IntVar(&flagTimeout, "timeout", 30, "HTTP请求超时(秒)")
@@ -114,10 +110,8 @@ func init() {
 	rootCmd.AddCommand(cookieCmd)
 	cookieCmd.AddCommand(cookieImportCmd)
 
-	// cookie import 命令参数 (简化)
-	cookieImportCmd.Flags().StringVar(&flagCurlCommand, "curl", "", "curl 命令字符串")
-	cookieImportCmd.Flags().StringVar(&flagCurlFile, "file", "", "包含 curl 命令的文件路径")
-	cookieImportCmd.MarkFlagsMutuallyExclusive("curl", "file")
+	// cookie import 命令参数
+	cookieImportCmd.Flags().StringVar(&flagCookieImportFile, "file", "", "Cookie file path (Netscape format)")
 
 	// 标记必需参数
 	rootCmd.MarkFlagsMutuallyExclusive("tid", "input")
@@ -309,7 +303,24 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 
 // runCookieImport 运行 cookie 导入命令
 func runCookieImport(cmd *cobra.Command, args []string) error {
-	// 简化版本的Cookie导入逻辑
-	fmt.Println("Cookie导入功能已简化")
+	if flagCookieImportFile == "" {
+		return fmt.Errorf("missing required flag: --file")
+	}
+
+	destPath := south2md.DefaultCookieFile("south2md")
+	destDir := filepath.Dir(destPath)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return fmt.Errorf("failed to create cookie cache directory: %v", err)
+	}
+
+	cm := south2md.NewCookieManager()
+	if err := cm.LoadFromFile(flagCookieImportFile); err != nil {
+		return fmt.Errorf("failed to load cookie file: %v", err)
+	}
+	if err := cm.SaveToFile(destPath); err != nil {
+		return fmt.Errorf("failed to save cookie file: %v", err)
+	}
+
+	fmt.Printf("Cookie file cached at %s\n", destPath)
 	return nil
 }

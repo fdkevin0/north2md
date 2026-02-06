@@ -1,7 +1,6 @@
 package south2md
 
 import (
-	"path/filepath"
 	"time"
 )
 
@@ -101,7 +100,7 @@ type MarkdownOptions struct {
 var defaultConfig = &Config{
 	BaseURL:    "https://south-plus.net/",
 	OutputFile: "post.md",
-	CacheDir:   "./cache",
+	CacheDir:   DefaultCacheDir("south2md"),
 
 	// CSS选择器配置
 	SelectorTitle:       "h1#subject_tpc",
@@ -121,7 +120,7 @@ var defaultConfig = &Config{
 	HTTPMaxRetries:    3,
 	HTTPRetryDelay:    2 * time.Second,
 	HTTPMaxConcurrent: 5,
-	HTTPCookieFile:    "./cookies.toml",
+	HTTPCookieFile:    DefaultCookieFile("south2md"),
 	HTTPEnableCookie:  true,
 	HTTPCustomHeaders: make(map[string]string),
 
@@ -152,12 +151,11 @@ var defaultConfig = &Config{
 // NewDefaultConfig 创建默认配置
 func NewDefaultConfig() *Config {
 	config := *defaultConfig // Copy defaults
-	dataDir := DefaultDataDir("south2md")
 	if config.GofileTool == "" {
-		config.GofileTool = filepath.Join(dataDir, "gofile-downloader", "gofile-downloader.py")
+		config.GofileTool = DefaultGofileToolPath("south2md")
 	}
 	if config.GofileVenvDir == "" {
-		config.GofileVenvDir = filepath.Join(dataDir, "py", "gofile")
+		config.GofileVenvDir = DefaultGofileVenvDir("south2md")
 	}
 	return &config
 }
