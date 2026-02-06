@@ -1,4 +1,4 @@
-package north2md_test
+package south2md_test
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/r3labs/diff/v3"
 
-	main "github.com/fdkevin0/north2md"
+	main "github.com/fdkevin0/south2md"
 )
 
 var (

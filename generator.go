@@ -1,4 +1,4 @@
-package north2md
+package south2md
 
 import (
 	"fmt"
@@ -12,15 +12,17 @@ import (
 
 // MarkdownGenerator Markdown生成器
 type MarkdownGenerator struct {
-	formatter    *MarkdownFormatter
-	imageHandler *ImageHandler
+	formatter     *MarkdownFormatter
+	imageHandler  *ImageHandler
+	gofileHandler *GofileHandler
 }
 
-// NewMarkdownGenerator 创建新的Markdown生成器
-func NewMarkdownGenerator(options *MarkdownOptions) *MarkdownGenerator {
+// NewMarkdownGenerator creates a new markdown generator.
+func NewMarkdownGenerator(options *MarkdownOptions, gofileHandler *GofileHandler) *MarkdownGenerator {
 	return &MarkdownGenerator{
-		formatter:    NewMarkdownFormatter(options),
-		imageHandler: NewImageHandler("images"),
+		formatter:     NewMarkdownFormatter(options),
+		imageHandler:  NewImageHandler("images"),
+		gofileHandler: gofileHandler,
 	}
 }
 
@@ -34,7 +36,7 @@ func (g *MarkdownGenerator) GenerateMarkdown(post *Post) (string, error) {
 	md.WriteString("----\n\n")
 
 	// 主楼内容
-	mainPostContent, err := g.formatter.FormatPostEntry(post.TID, post.MainPost, 0, "0", post, g.imageHandler)
+	mainPostContent, err := g.formatter.FormatPostEntry(post.TID, post.MainPost, 0, "0", post, g.imageHandler, g.gofileHandler)
 	if err != nil {
 		return "", fmt.Errorf("failed to format main post: %w", err)
 	}
@@ -44,7 +46,7 @@ func (g *MarkdownGenerator) GenerateMarkdown(post *Post) (string, error) {
 	// 回复内容
 	if len(post.Replies) > 0 {
 		for i, reply := range post.Replies {
-			replyContent, err := g.formatter.FormatPostEntry(post.TID, reply, i+1, reply.Floor, post, g.imageHandler)
+			replyContent, err := g.formatter.FormatPostEntry(post.TID, reply, i+1, reply.Floor, post, g.imageHandler, g.gofileHandler)
 			if err != nil {
 				return "", fmt.Errorf("failed to format reply %d: %w", i, err)
 			}
@@ -68,9 +70,13 @@ func (g *MarkdownGenerator) SavePost(post *Post, baseDir string) error {
 	}
 
 	imagesDir := filepath.Join(tidDir, "images")
+	gofileDir := filepath.Join(tidDir, "gofile")
 
 	if err := os.MkdirAll(imagesDir, 0755); err != nil {
 		return fmt.Errorf("创建images目录失败: %v", err)
+	}
+	if err := os.MkdirAll(gofileDir, 0755); err != nil {
+		return fmt.Errorf("创建gofile目录失败: %v", err)
 	}
 
 	// 检查是否存在现有metadata，如果存在则加载图片缓存信息
@@ -82,6 +88,7 @@ func (g *MarkdownGenerator) SavePost(post *Post, baseDir string) error {
 			err = toml.Unmarshal(data, &existingPost)
 			if err == nil {
 				post.Images = existingPost.Images
+				post.GofileFiles = existingPost.GofileFiles
 				slog.Info("Loaded existing image cache from metadata", "count", len(post.Images))
 			} else {
 				slog.Warn("Failed to unmarshal existing metadata", "error", err)

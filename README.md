@@ -7,6 +7,7 @@
 - **Fetch Online Posts**: Scrape forum posts directly by providing a thread ID (TID).
 - **Parse Local Files**: Convert locally saved HTML files into Markdown.
 - **Attachment Downloading**: Automatically download and cache images and other attachments from the post.
+- **Gofile 同步**: 识别并下载 `gofile.io` 分享链接到 `tid/gofile/`，并在 Markdown 中同时保留原始链接与本地相对路径。
 - **Cookie-Based Authentication**: Use your browser's cookies to access restricted or members-only content.
 - **Markdown Formatting**: Generate well-formatted Markdown with options to include author information, table of contents, and more.
 - **Configurable**: Customize the tool's behavior through command-line flags or a TOML configuration file.
@@ -79,6 +80,17 @@ Here are all the available command-line flags:
 | `--timeout`       | HTTP request timeout in seconds                 | `30`                   |
 | `--max-concurrent`| Maximum number of concurrent downloads          | `5`                    |
 | `--debug`         | Enable debug logging                            | `false`                |
+| `--gofile-enable` | 启用 gofile 下载                                | `true`                 |
+| `--gofile-tool`   | gofile-downloader 脚本路径                      | `~/.local/share/north2md/gofile-downloader/gofile-downloader.py` |
+| `--gofile-dir`    | gofile 下载目录                                 | `gofile`               |
+| `--gofile-token`  | gofile 账号 token                               |                         |
+| `--gofile-venv-dir` | gofile 虚拟环境目录                           | `~/.local/share/north2md/py/gofile` |
+| `--gofile-skip-existing` | 跳过已存在的 gofile 内容               | `true`                 |
+
+### Gofile Downloader
+
+需要将 `gofile-downloader` repo clone 到 XDG data home（默认 `~/.local/share/north2md`），
+并确保 Python 3.10+ 可用。工具会自动创建并管理虚拟环境。
 
 ## Configuration
 

@@ -1,6 +1,7 @@
-package north2md
+package south2md
 
 import (
+	"path/filepath"
 	"time"
 )
 
@@ -50,6 +51,14 @@ type Config struct {
 	CacheCacheFiles   bool  `toml:"cache_files"`   // 是否缓存其他附件
 	CacheMaxFileSize  int64 `toml:"max_file_size"` // 最大文件大小(字节)
 	CacheSkipExisting bool  `toml:"skip_existing"` // 是否跳过已存在文件
+
+	// Gofile config
+	GofileEnable       bool   `toml:"gofile_enable"`        // Enable gofile downloads
+	GofileTool         string `toml:"gofile_tool"`          // gofile-downloader script path
+	GofileDir          string `toml:"gofile_dir"`           // gofile download directory
+	GofileToken        string `toml:"gofile_token"`         // gofile account token
+	GofileVenvDir      string `toml:"gofile_venv_dir"`      // gofile virtualenv directory
+	GofileSkipExisting bool   `toml:"gofile_skip_existing"` // Skip already downloaded content
 }
 
 // HTTPOptions HTTP请求配置 (向后兼容)
@@ -90,7 +99,7 @@ type MarkdownOptions struct {
 
 // Default configuration values (centralized for maintainability)
 var defaultConfig = &Config{
-	BaseURL:    "https://north-plus.net/",
+	BaseURL:    "https://south-plus.net/",
 	OutputFile: "post.md",
 	CacheDir:   "./cache",
 
@@ -130,10 +139,25 @@ var defaultConfig = &Config{
 	CacheCacheFiles:   true,
 	CacheMaxFileSize:  10 * 1024 * 1024, // 10MB
 	CacheSkipExisting: true,
+
+	// Gofile配置
+	GofileEnable:       true,
+	GofileTool:         "",
+	GofileDir:          "gofile",
+	GofileToken:        "",
+	GofileVenvDir:      "",
+	GofileSkipExisting: true,
 }
 
 // NewDefaultConfig 创建默认配置
 func NewDefaultConfig() *Config {
 	config := *defaultConfig // Copy defaults
+	dataDir := DefaultDataDir("south2md")
+	if config.GofileTool == "" {
+		config.GofileTool = filepath.Join(dataDir, "gofile-downloader", "gofile-downloader.py")
+	}
+	if config.GofileVenvDir == "" {
+		config.GofileVenvDir = filepath.Join(dataDir, "py", "gofile")
+	}
 	return &config
 }

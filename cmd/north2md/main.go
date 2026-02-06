@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/fdkevin0/north2md/internal/cli"
+	"github.com/fdkevin0/south2md/internal/cli"
 )
 
 func main() {

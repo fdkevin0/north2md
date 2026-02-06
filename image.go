@@ -1,4 +1,4 @@
-package north2md
+package south2md
 
 import (
 	"bytes"

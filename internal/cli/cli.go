@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fdkevin0/north2md"
+	"github.com/fdkevin0/south2md"
 	"github.com/spf13/cobra"
 )
 
 var (
 	// 全局配置
-	config *north2md.Config
+	config *south2md.Config
 
 	// 命令行参数
 	flagTID        string
@@ -22,11 +22,17 @@ var (
 	flagCacheDir   string
 	flagBaseURL    string
 	// 简化：移除部分不常用的参数
-	flagCookieFile    string
-	flagNoCache       bool
-	flagTimeout       int
-	flagMaxConcurrent int
-	flagDebug         bool
+	flagCookieFile         string
+	flagNoCache            bool
+	flagTimeout            int
+	flagMaxConcurrent      int
+	flagDebug              bool
+	flagGofileEnable       bool
+	flagGofileTool         string
+	flagGofileDir          string
+	flagGofileToken        string
+	flagGofileVenvDir      string
+	flagGofileSkipExisting bool
 
 	// Cookie相关参数
 	flagCurlCommand string
@@ -35,7 +41,7 @@ var (
 
 // rootCmd 根命令
 var rootCmd = &cobra.Command{
-	Use:   "north2md [TID]",
+	Use:   "south2md [TID]",
 	Short: "HTML数据提取器 - 从南+ South Plus论坛提取帖子内容并转换为Markdown",
 	Long: `HTML数据提取器是一个用Go语言开发的工具，专门用于从"南+ South Plus"论坛抓取帖子内容并转换为Markdown格式。
 支持功能：
@@ -44,20 +50,20 @@ var rootCmd = &cobra.Command{
 - 下载并缓存帖子中的所有附件(图片、文件)
 - 生成格式化的Markdown文档`,
 	Example: `  # 通过TID抓取在线帖子
-  north2md 2636739 --output=post.md
-  north2md --tid=2636739 --output=post.md
+  south2md 2636739 --output=post.md
+  south2md --tid=2636739 --output=post.md
 
   # 使用Cookie文件登录
-  north2md 2636739 --cookie-file=./cookies.toml --output=post.md
+  south2md 2636739 --cookie-file=./cookies.toml --output=post.md
 
   # 解析本地HTML文件
-  north2md --input=post.html --output=post.md
+  south2md --input=post.html --output=post.md
 
   # 指定缓存目录
-  north2md 2636739 --cache-dir=./cache --output=post.md`,
+  south2md 2636739 --cache-dir=./cache --output=post.md`,
 	RunE: runExtractor,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		north2md.InitLogger(flagDebug)
+		south2md.InitLogger(flagDebug)
 	},
 	Args: cobra.MaximumNArgs(1), // 允许最多一个位置参数
 }
@@ -75,28 +81,34 @@ var cookieImportCmd = &cobra.Command{
 	Short: "从 curl 命令导入 cookie",
 	Long:  `从 curl 命令或包含 curl 命令的文件中解析并导入 cookie`,
 	Example: `  # 从 curl 命令导入 cookie
-  north2md cookie import --curl="curl 'https://example.com' -b 'session=abc123'"
+  south2md cookie import --curl="curl 'https://example.com' -b 'session=abc123'"
 
   # 从文件导入 curl 命令
-  north2md cookie import --file=./curl.txt`,
+  south2md cookie import --file=./curl.txt`,
 	RunE: runCookieImport,
 }
 
 func init() {
 	// 初始化默认配置
-	config = north2md.NewDefaultConfig()
+	config = south2md.NewDefaultConfig()
 
 	// 根命令参数
 	rootCmd.PersistentFlags().StringVar(&flagTID, "tid", "", "帖子ID (用于在线抓取)")
 	rootCmd.PersistentFlags().StringVar(&flagInputFile, "input", "", "输入HTML文件路径")
 	rootCmd.PersistentFlags().StringVar(&flagOutputFile, "output", "post.md", "输出Markdown文件路径")
 	rootCmd.PersistentFlags().StringVar(&flagCacheDir, "cache-dir", "./cache", "附件缓存目录")
-	rootCmd.PersistentFlags().StringVar(&flagBaseURL, "base-url", "https://north-plus.net/", "论坛基础URL")
+	rootCmd.PersistentFlags().StringVar(&flagBaseURL, "base-url", "https://south-plus.net/", "论坛基础URL")
 	rootCmd.PersistentFlags().StringVar(&flagCookieFile, "cookie-file", "./cookies.toml", "Cookie文件路径")
 	rootCmd.PersistentFlags().BoolVar(&flagNoCache, "no-cache", false, "禁用附件缓存")
 	rootCmd.PersistentFlags().BoolVar(&flagDebug, "debug", false, "启用调试日志")
 	rootCmd.PersistentFlags().IntVar(&flagTimeout, "timeout", 30, "HTTP请求超时(秒)")
 	rootCmd.PersistentFlags().IntVar(&flagMaxConcurrent, "max-concurrent", 5, "最大并发下载数")
+	rootCmd.PersistentFlags().BoolVar(&flagGofileEnable, "gofile-enable", config.GofileEnable, "启用gofile下载")
+	rootCmd.PersistentFlags().StringVar(&flagGofileTool, "gofile-tool", config.GofileTool, "gofile-downloader脚本路径")
+	rootCmd.PersistentFlags().StringVar(&flagGofileDir, "gofile-dir", config.GofileDir, "gofile下载目录")
+	rootCmd.PersistentFlags().StringVar(&flagGofileToken, "gofile-token", config.GofileToken, "gofile账号token")
+	rootCmd.PersistentFlags().StringVar(&flagGofileVenvDir, "gofile-venv-dir", config.GofileVenvDir, "gofile虚拟环境目录")
+	rootCmd.PersistentFlags().BoolVar(&flagGofileSkipExisting, "gofile-skip-existing", config.GofileSkipExisting, "跳过已存在的gofile内容")
 
 	// 添加子命令
 	rootCmd.AddCommand(cookieCmd)
@@ -162,6 +174,21 @@ func initConfig() error {
 		config.HTTPMaxConcurrent = flagMaxConcurrent
 	}
 
+	config.GofileEnable = flagGofileEnable
+	if flagGofileTool != "" {
+		config.GofileTool = flagGofileTool
+	}
+	if flagGofileDir != "" {
+		config.GofileDir = flagGofileDir
+	}
+	if flagGofileToken != "" {
+		config.GofileToken = flagGofileToken
+	}
+	if flagGofileVenvDir != "" {
+		config.GofileVenvDir = flagGofileVenvDir
+	}
+	config.GofileSkipExisting = flagGofileSkipExisting
+
 	return nil
 }
 
@@ -178,7 +205,7 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 	}
 
 	// 创建HTTP客户端
-	httpOptions := &north2md.HTTPOptions{
+	httpOptions := &south2md.HTTPOptions{
 		Timeout:       config.HTTPTimeout,
 		UserAgent:     config.HTTPUserAgent,
 		MaxRetries:    config.HTTPMaxRetries,
@@ -188,13 +215,13 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 		EnableCookie:  config.HTTPEnableCookie,
 		CustomHeaders: config.HTTPCustomHeaders,
 	}
-	client := north2md.NewHTTPClient(httpOptions)
+	client := south2md.NewHTTPClient(httpOptions)
 
 	// 创建Fetcher
-	httpClient := north2md.NewFetcher(client, httpOptions, config.BaseURL)
+	httpClient := south2md.NewFetcher(client, httpOptions, config.BaseURL)
 
 	// 创建帖子解析器
-	postParser := north2md.NewPostParser(&north2md.HTMLSelectors{
+	postParser := south2md.NewPostParser(&south2md.HTMLSelectors{
 		Title:       config.SelectorTitle,
 		Forum:       config.SelectorForum,
 		PostTable:   config.SelectorPostTable,
@@ -208,22 +235,27 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 	})
 
 	// 创建Markdown生成器
-	markdownGenerator := north2md.NewMarkdownGenerator(&north2md.MarkdownOptions{
+	var gofileHandler *south2md.GofileHandler
+	if config.GofileEnable {
+		gofileHandler = south2md.NewGofileHandler(config)
+	}
+
+	markdownGenerator := south2md.NewMarkdownGenerator(&south2md.MarkdownOptions{
 		IncludeAuthorInfo: config.MarkdownIncludeAuthorInfo,
 		IncludeImages:     config.MarkdownIncludeImages,
 		ImageStyle:        config.MarkdownImageStyle,
 		TableOfContents:   config.MarkdownTableOfContents,
 		IncludeTOC:        config.MarkdownIncludeTOC,
 		FloorNumbering:    config.MarkdownFloorNumbering,
-	})
+	}, gofileHandler)
 
 	// 获取帖子内容
-	var post *north2md.Post
+	var post *south2md.Post
 	var err error
 
 	if config.TID != "" {
 		// 在线抓取模式
-		post, err = httpClient.FetchPostWithPagination(config.TID, postParser, &north2md.HTMLSelectors{
+		post, err = httpClient.FetchPostWithPagination(config.TID, postParser, &south2md.HTMLSelectors{
 			Title:       config.SelectorTitle,
 			Forum:       config.SelectorForum,
 			PostTable:   config.SelectorPostTable,

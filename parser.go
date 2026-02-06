@@ -1,4 +1,4 @@
-package north2md
+package south2md
 
 import (
 	"fmt"
@@ -15,12 +15,12 @@ import (
 
 // Pre-compiled regex patterns for better performance
 var (
-	uidPattern            = regexp.MustCompile(`UID:\s*(\d+)`)
-	postCountPattern      = regexp.MustCompile(`发帖:\s*(\d+)`)
-	registerDatePattern   = regexp.MustCompile(`注册时间:\s*([0-9\-]+)`)
-	lastLoginPattern      = regexp.MustCompile(`最后登录:\s*([0-9\-]+)`)
-	uidURLPattern         = regexp.MustCompile(`uid[=-](\d+)`)
-	digitsPattern         = regexp.MustCompile(`(\d+)`)
+	uidPattern          = regexp.MustCompile(`UID:\s*(\d+)`)
+	postCountPattern    = regexp.MustCompile(`发帖:\s*(\d+)`)
+	registerDatePattern = regexp.MustCompile(`注册时间:\s*([0-9\-]+)`)
+	lastLoginPattern    = regexp.MustCompile(`最后登录:\s*([0-9\-]+)`)
+	uidURLPattern       = regexp.MustCompile(`uid[=-](\d+)`)
+	digitsPattern       = regexp.MustCompile(`(\d+)`)
 )
 
 // PostParser HTML解析和数据提取器

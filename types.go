@@ -1,4 +1,4 @@
-package north2md
+package south2md
 
 import (
 	"time"
@@ -6,15 +6,16 @@ import (
 
 // Post 表示一个完整的论坛帖子
 type Post struct {
-	TID         string      `toml:"tid"`          // 帖子ID
-	Title       string      `toml:"title"`        // 帖子标题
-	URL         string      `toml:"url"`          // 帖子链接
-	Forum       string      `toml:"forum"`        // 版块名称
-	MainPost    PostEntry   `toml:"main_post"`    // 主楼内容
-	Replies     []PostEntry `toml:"replies"`      // 回复列表
-	TotalFloors int         `toml:"total_floors"` // 总楼层数
-	Images      []Image     `toml:"images"`       // 图片信息列表
-	CreatedAt   time.Time   `toml:"created_at"`   // 创建时间
+	TID         string       `toml:"tid"`          // 帖子ID
+	Title       string       `toml:"title"`        // 帖子标题
+	URL         string       `toml:"url"`          // 帖子链接
+	Forum       string       `toml:"forum"`        // 版块名称
+	MainPost    PostEntry    `toml:"main_post"`    // 主楼内容
+	Replies     []PostEntry  `toml:"replies"`      // 回复列表
+	TotalFloors int          `toml:"total_floors"` // 总楼层数
+	Images      []Image      `toml:"images"`       // 图片信息列表
+	GofileFiles []GofileFile `toml:"gofile_files"` // Gofile download records
+	CreatedAt   time.Time    `toml:"created_at"`   // 创建时间
 }
 
 // PostEntry 表示单个楼层的内容
@@ -44,6 +45,16 @@ type Image struct {
 	Alt        string `toml:"alt"`        // 图片描述
 	FileSize   int64  `toml:"file_size"`  // 文件大小
 	Downloaded bool   `toml:"downloaded"` // 是否已下载
+}
+
+// GofileFile represents a gofile download record.
+type GofileFile struct {
+	URL        string   `toml:"url"`
+	ContentID  string   `toml:"content_id"`
+	LocalDir   string   `toml:"local_dir"`
+	LocalFiles []string `toml:"local_files"`
+	Downloaded bool     `toml:"downloaded"`
+	Error      string   `toml:"error,omitempty"`
 }
 
 // CookieEntry 表示Cookie信息

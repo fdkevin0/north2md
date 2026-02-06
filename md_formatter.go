@@ -1,4 +1,4 @@
-package north2md
+package south2md
 
 import (
 	"fmt"
@@ -27,7 +27,7 @@ func (mf *MarkdownFormatter) FormatTitle(title string) string {
 }
 
 // FormatPostEntry formats a single post entry with complex header
-func (mf *MarkdownFormatter) FormatPostEntry(tid string, entry PostEntry, index int, floor string, post *Post, imageHandler *ImageHandler) (string, error) {
+func (mf *MarkdownFormatter) FormatPostEntry(tid string, entry PostEntry, index int, floor string, post *Post, imageHandler *ImageHandler, gofileHandler *GofileHandler) (string, error) {
 	var md strings.Builder
 
 	// 复杂标题格式
@@ -51,7 +51,7 @@ func (mf *MarkdownFormatter) FormatPostEntry(tid string, entry PostEntry, index 
 
 	if entry.HTMLContent != "" {
 		markdown, err := htmltomarkdown.ConvertString(entry.HTMLContent,
-			converter.WithDomain("https://north-plus.net/"),
+			converter.WithDomain("https://south-plus.net/"),
 		)
 		if err != nil {
 			return "", fmt.Errorf("failed to convert HTML to markdown: %w", err)
@@ -60,6 +60,13 @@ func (mf *MarkdownFormatter) FormatPostEntry(tid string, entry PostEntry, index 
 		md2, err := imageHandler.DownloadAndCacheImages(tid, []byte(markdown), post)
 		if err != nil {
 			return "", fmt.Errorf("failed to download and cache images: %w", err)
+		}
+
+		if gofileHandler != nil {
+			md2, err = gofileHandler.DownloadAndAnnotateGofileLinks(tid, md2, post)
+			if err != nil {
+				return "", fmt.Errorf("failed to download gofile links: %w", err)
+			}
 		}
 
 		md.WriteString(string(md2))
@@ -73,7 +80,7 @@ func (mf *MarkdownFormatter) FormatPostEntry(tid string, entry PostEntry, index 
 func (mf *MarkdownFormatter) FormatFooter() string {
 	var md strings.Builder
 	md.WriteString("---\n\n")
-	md.WriteString("*本文档由 north2md 自动生成*\n\n")
+	md.WriteString("*本文档由 south2md 自动生成*\n\n")
 	fmt.Fprintf(&md, "*生成时间: %s*\n", time.Now().Format("2006-01-02 15:04:05"))
 	return md.String()
 }

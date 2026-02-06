@@ -1,4 +1,4 @@
-package north2md
+package south2md
 
 import (
 	"fmt"
@@ -19,7 +19,7 @@ import (
 
 // Pre-compiled regex patterns for better performance
 var (
-	pagesPattern = regexp.MustCompile(`Pages:\s*\d+/(\d+)`)
+	pagesPattern    = regexp.MustCompile(`Pages:\s*\d+/(\d+)`)
 	pageLinkPattern = regexp.MustCompile(`page-(\d+)`)
 )
 
@@ -269,7 +269,7 @@ func (f *Fetcher) doRequest(targetURL string) (*http.Response, error) {
 	if err != nil {
 		return nil, NewNetworkError("执行HTTP请求失败", err)
 	}
-	
+
 	return resp, nil
 }
 
@@ -404,10 +404,10 @@ type PageFetchTask struct {
 
 // PageFetchResult represents the result of a page fetch
 type PageFetchResult struct {
-	Page     int
-	HTML     string
-	Error    error
-	Parser   *PostParser
+	Page   int
+	HTML   string
+	Error  error
+	Parser *PostParser
 }
 
 // fetchPageWorker is a worker that fetches pages concurrently
