@@ -1,6 +1,10 @@
 package south2md
 
 import (
+	"bufio"
+	"bytes"
+	"compress/gzip"
+	"crypto/md5"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -51,6 +55,8 @@ type gofileContentData struct {
 	Type           string                       `json:"type"`
 	Name           string                       `json:"name"`
 	Link           string                       `json:"link"`
+	Size           int64                        `json:"size"`
+	MD5            string                       `json:"md5"`
 	Password       string                       `json:"password"`
 	PasswordStatus string                       `json:"passwordStatus"`
 	Children       map[string]gofileContentData `json:"children"`
@@ -60,6 +66,13 @@ type gofileRemoteFile struct {
 	Path     string
 	Filename string
 	Link     string
+	Size     int64
+	MD5      string
+}
+
+type gofileFileDigest struct {
+	Size int64  `json:"size"`
+	MD5  string `json:"md5"`
 }
 
 // NewGofileHandler creates a new handler from config.
@@ -265,7 +278,7 @@ func (gh *GofileHandler) ensureAccountToken() (string, error) {
 	}
 
 	var envelope gofileAPIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+	if err := decodeJSONResponse(resp.Body, resp.Header.Get("Content-Encoding"), &envelope); err != nil {
 		return "", fmt.Errorf("failed to parse account response: %w", err)
 	}
 	if envelope.Status != "ok" {
@@ -306,6 +319,8 @@ func (gh *GofileHandler) buildContentTree(
 			Path:     filepath.Dir(filePath),
 			Filename: filepath.Base(filePath),
 			Link:     content.Link,
+			Size:     content.Size,
+			MD5:      content.MD5,
 		}}, nil
 	}
 
@@ -340,6 +355,8 @@ func (gh *GofileHandler) buildContentTree(
 			Path:     filepath.Dir(filePath),
 			Filename: filepath.Base(filePath),
 			Link:     child.Link,
+			Size:     child.Size,
+			MD5:      child.MD5,
 		})
 	}
 
@@ -378,7 +395,7 @@ func (gh *GofileHandler) fetchContent(contentID, token, password string) (gofile
 	}
 
 	var envelope gofileAPIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+	if err := decodeJSONResponse(resp.Body, resp.Header.Get("Content-Encoding"), &envelope); err != nil {
 		return gofileContentData{}, fmt.Errorf("failed to parse content response: %w", err)
 	}
 	if envelope.Status != "ok" {
@@ -402,7 +419,12 @@ func (gh *GofileHandler) downloadFile(file gofileRemoteFile) error {
 	}
 
 	finalPath := filepath.Join(file.Path, file.Filename)
-	if info, err := os.Stat(finalPath); err == nil && info.Size() > 0 {
+	if ok, err := gh.verifyAndMaybeSkipExistingFile(finalPath, file); err != nil {
+		slog.Warn("Gofile existing file verification failed, re-downloading", "path", finalPath, "error", err)
+		_ = os.Remove(finalPath)
+		_ = os.Remove(gofileDigestPath(finalPath))
+	} else if ok {
+		slog.Info("Gofile file already verified, skipping", "url", file.Link, "path", finalPath)
 		return nil
 	}
 
@@ -411,17 +433,85 @@ func (gh *GofileHandler) downloadFile(file gofileRemoteFile) error {
 	if info, err := os.Stat(tmpPath); err == nil {
 		partSize = info.Size()
 	}
+	slog.Info("Gofile file download started", "url", file.Link, "path", finalPath, "resume_bytes", partSize)
 
+	var lastErr error
 	for i := 0; i < max(1, gh.maxRetries); i++ {
 		if err := gh.downloadFileAttempt(file.Link, tmpPath, finalPath, partSize); err == nil {
+			if err := gh.validateAndPersistDigest(finalPath, file); err != nil {
+				lastErr = err
+				_ = os.Remove(finalPath)
+				_ = os.Remove(gofileDigestPath(finalPath))
+				continue
+			}
+			slog.Info("Gofile file download completed", "url", file.Link, "path", finalPath)
 			return nil
+		} else {
+			lastErr = err
 		}
 		if info, statErr := os.Stat(tmpPath); statErr == nil {
 			partSize = info.Size()
 		}
 	}
 
+	if lastErr != nil {
+		return fmt.Errorf("exceeded retry limit: %w", lastErr)
+	}
 	return fmt.Errorf("exceeded retry limit")
+}
+
+func (gh *GofileHandler) verifyAndMaybeSkipExistingFile(finalPath string, file gofileRemoteFile) (bool, error) {
+	info, err := os.Stat(finalPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	if info.IsDir() || info.Size() <= 0 {
+		return false, nil
+	}
+
+	digest, err := computeFileDigest(finalPath)
+	if err != nil {
+		return false, err
+	}
+	if err := validateDigestAgainstRemote(digest, file); err != nil {
+		return false, err
+	}
+
+	sidecarPath := gofileDigestPath(finalPath)
+	if sidecar, err := readGofileDigest(sidecarPath); err == nil {
+		if sidecar.Size != digest.Size || !strings.EqualFold(sidecar.MD5, digest.MD5) {
+			return false, fmt.Errorf("digest sidecar mismatch")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+
+	if err := writeGofileDigest(sidecarPath, digest); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (gh *GofileHandler) validateAndPersistDigest(finalPath string, file gofileRemoteFile) error {
+	digest, err := computeFileDigest(finalPath)
+	if err != nil {
+		return err
+	}
+	if err := validateDigestAgainstRemote(digest, file); err != nil {
+		return err
+	}
+	if err := writeGofileDigest(gofileDigestPath(finalPath), digest); err != nil {
+		return err
+	}
+	slog.Info("Gofile file digest verified",
+		"path", finalPath,
+		"size", digest.Size,
+		"md5", digest.MD5,
+	)
+	return nil
 }
 
 func (gh *GofileHandler) downloadFileAttempt(link, tmpPath, finalPath string, partSize int64) error {
@@ -429,9 +519,7 @@ func (gh *GofileHandler) downloadFileAttempt(link, tmpPath, finalPath string, pa
 	if err != nil {
 		return fmt.Errorf("failed to create download request: %w", err)
 	}
-	if gh.userAgent != "" {
-		req.Header.Set("User-Agent", gh.userAgent)
-	}
+	gh.applyBaseHeaders(req, gh.token)
 	if partSize > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", partSize))
 	}
@@ -445,17 +533,44 @@ func (gh *GofileHandler) downloadFileAttempt(link, tmpPath, finalPath string, pa
 	if !isValidDownloadStatus(resp.StatusCode, partSize) {
 		return fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
+	slog.Info("Gofile file response received",
+		"url", link,
+		"status", resp.StatusCode,
+		"content_type", resp.Header.Get("Content-Type"),
+		"content_length", resp.Header.Get("Content-Length"),
+		"range", req.Header.Get("Range"),
+	)
 
-	totalSize, err := extractFileSize(resp.Header, partSize)
+	bodyReader := io.Reader(resp.Body)
+	buffered := bufio.NewReader(resp.Body)
+	head, _ := buffered.Peek(512)
+	if isHTMLPayload(resp.Header.Get("Content-Type"), head) {
+		return fmt.Errorf("unexpected HTML response body (possible auth failure or expired link)")
+	}
+	bodyReader = buffered
+
+	effectivePartSize := partSize
+	if partSize > 0 && resp.StatusCode == http.StatusOK {
+		// Server ignored Range; restart from zero to avoid endless retry loop.
+		effectivePartSize = 0
+	}
+
+	totalSize, hasTotalSize, err := extractFileSize(resp.Header, effectivePartSize)
 	if err != nil {
 		return err
 	}
 
-	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	openFlag := os.O_CREATE | os.O_WRONLY
+	if effectivePartSize > 0 {
+		openFlag |= os.O_APPEND
+	} else {
+		openFlag |= os.O_TRUNC
+	}
+	f, err := os.OpenFile(tmpPath, openFlag, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open temp file: %w", err)
 	}
-	if _, err := io.Copy(f, resp.Body); err != nil {
+	if _, err := io.Copy(f, bodyReader); err != nil {
 		_ = f.Close()
 		return fmt.Errorf("failed to write temp file: %w", err)
 	}
@@ -467,7 +582,7 @@ func (gh *GofileHandler) downloadFileAttempt(link, tmpPath, finalPath string, pa
 	if err != nil {
 		return fmt.Errorf("failed to stat temp file: %w", err)
 	}
-	if info.Size() != totalSize {
+	if hasTotalSize && info.Size() != totalSize {
 		return fmt.Errorf("download incomplete: %d != %d", info.Size(), totalSize)
 	}
 
@@ -497,6 +612,109 @@ func (gh *GofileHandler) doRequestWithRetry(req *http.Request) (*http.Response, 
 		lastErr = fmt.Errorf("unknown request error")
 	}
 	return nil, lastErr
+}
+
+func decodeJSONResponse(body io.Reader, contentEncoding string, target any) error {
+	reader := bufio.NewReader(body)
+	useGzip := hasGzipEncoding(contentEncoding)
+	if !useGzip {
+		if signature, err := reader.Peek(2); err == nil && len(signature) == 2 && signature[0] == 0x1f && signature[1] == 0x8b {
+			useGzip = true
+		}
+	}
+
+	var payload io.Reader = reader
+	if useGzip {
+		gzReader, err := gzip.NewReader(reader)
+		if err != nil {
+			return fmt.Errorf("failed to create gzip reader: %w", err)
+		}
+		defer gzReader.Close()
+		payload = gzReader
+	}
+
+	if err := json.NewDecoder(payload).Decode(target); err != nil {
+		return err
+	}
+	return nil
+}
+
+func hasGzipEncoding(contentEncoding string) bool {
+	if strings.TrimSpace(contentEncoding) == "" {
+		return false
+	}
+	for _, part := range strings.Split(contentEncoding, ",") {
+		token := strings.ToLower(strings.TrimSpace(part))
+		if token == "gzip" || token == "x-gzip" {
+			return true
+		}
+	}
+	return false
+}
+
+func isHTMLPayload(contentType string, prefix []byte) bool {
+	if strings.Contains(strings.ToLower(contentType), "text/html") {
+		return true
+	}
+	trimmed := bytes.TrimSpace(prefix)
+	trimmedLower := bytes.ToLower(trimmed)
+	return bytes.HasPrefix(trimmedLower, []byte("<!doctype html")) || bytes.HasPrefix(trimmedLower, []byte("<html"))
+}
+
+func gofileDigestPath(finalPath string) string {
+	return finalPath + ".north2md.digest.json"
+}
+
+func readGofileDigest(path string) (gofileFileDigest, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return gofileFileDigest{}, err
+	}
+	var d gofileFileDigest
+	if err := json.Unmarshal(raw, &d); err != nil {
+		return gofileFileDigest{}, fmt.Errorf("invalid digest file: %w", err)
+	}
+	return d, nil
+}
+
+func writeGofileDigest(path string, d gofileFileDigest) error {
+	raw, err := json.Marshal(d)
+	if err != nil {
+		return fmt.Errorf("failed to marshal digest: %w", err)
+	}
+	if err := os.WriteFile(path, raw, 0644); err != nil {
+		return fmt.Errorf("failed to write digest file: %w", err)
+	}
+	return nil
+}
+
+func computeFileDigest(path string) (gofileFileDigest, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return gofileFileDigest{}, fmt.Errorf("failed to open file for digest: %w", err)
+	}
+	defer f.Close()
+
+	hMD5 := md5.New()
+	n, err := io.Copy(hMD5, f)
+	if err != nil {
+		return gofileFileDigest{}, fmt.Errorf("failed to compute digest: %w", err)
+	}
+
+	return gofileFileDigest{
+		Size: n,
+		MD5:  hex.EncodeToString(hMD5.Sum(nil)),
+	}, nil
+}
+
+func validateDigestAgainstRemote(d gofileFileDigest, file gofileRemoteFile) error {
+	if file.Size > 0 && d.Size != file.Size {
+		return fmt.Errorf("size mismatch: local=%d remote=%d", d.Size, file.Size)
+	}
+	if strings.TrimSpace(file.MD5) != "" && !strings.EqualFold(d.MD5, strings.TrimSpace(file.MD5)) {
+		return fmt.Errorf("md5 mismatch: local=%s remote=%s", d.MD5, strings.TrimSpace(file.MD5))
+	}
+	return nil
 }
 
 func (gh *GofileHandler) applyBaseHeaders(req *http.Request, token string) {
@@ -672,34 +890,42 @@ func isValidDownloadStatus(statusCode int, partSize int64) bool {
 	if partSize == 0 {
 		return statusCode == http.StatusOK || statusCode == http.StatusPartialContent
 	}
-	return statusCode == http.StatusPartialContent
+	return statusCode == http.StatusPartialContent || statusCode == http.StatusOK
 }
 
-func extractFileSize(header http.Header, partSize int64) (int64, error) {
+func extractFileSize(header http.Header, partSize int64) (int64, bool, error) {
 	if partSize == 0 {
 		contentLength := header.Get("Content-Length")
 		if contentLength == "" {
-			return 0, fmt.Errorf("missing Content-Length")
+			return 0, false, nil
 		}
 		var size int64
 		if _, err := fmt.Sscanf(contentLength, "%d", &size); err != nil {
-			return 0, fmt.Errorf("invalid Content-Length: %w", err)
+			return 0, false, fmt.Errorf("invalid Content-Length: %w", err)
 		}
-		return size, nil
+		return size, true, nil
 	}
 
 	contentRange := header.Get("Content-Range")
-	if contentRange == "" {
-		return 0, fmt.Errorf("missing Content-Range")
+	if contentRange != "" {
+		parts := strings.Split(contentRange, "/")
+		if len(parts) != 2 {
+			return 0, false, fmt.Errorf("invalid Content-Range: %s", contentRange)
+		}
+		var size int64
+		if _, err := fmt.Sscanf(parts[1], "%d", &size); err != nil {
+			return 0, false, fmt.Errorf("invalid Content-Range total size: %w", err)
+		}
+		return size, true, nil
 	}
 
-	parts := strings.Split(contentRange, "/")
-	if len(parts) != 2 {
-		return 0, fmt.Errorf("invalid Content-Range: %s", contentRange)
+	contentLength := header.Get("Content-Length")
+	if contentLength == "" {
+		return 0, false, nil
 	}
-	var size int64
-	if _, err := fmt.Sscanf(parts[1], "%d", &size); err != nil {
-		return 0, fmt.Errorf("invalid Content-Range total size: %w", err)
+	var remain int64
+	if _, err := fmt.Sscanf(contentLength, "%d", &remain); err != nil {
+		return 0, false, fmt.Errorf("invalid Content-Length: %w", err)
 	}
-	return size, nil
+	return partSize + remain, true, nil
 }
