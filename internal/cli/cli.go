@@ -28,6 +28,7 @@ var (
 	flagTimeout            int
 	flagMaxConcurrent      int
 	flagDebug              bool
+	flagUserAgent          string
 	flagGofileEnable       bool
 	flagGofileTool         string
 	flagGofileDir          string
@@ -101,6 +102,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagDebug, "debug", false, "启用调试日志")
 	rootCmd.PersistentFlags().IntVar(&flagTimeout, "timeout", 30, "HTTP请求超时(秒)")
 	rootCmd.PersistentFlags().IntVar(&flagMaxConcurrent, "max-concurrent", 5, "最大并发下载数")
+	rootCmd.PersistentFlags().StringVar(&flagUserAgent, "user-agent", config.HTTPUserAgent, "HTTP User-Agent")
 	rootCmd.PersistentFlags().BoolVar(&flagGofileEnable, "gofile-enable", config.GofileEnable, "启用gofile下载")
 	rootCmd.PersistentFlags().StringVar(&flagGofileTool, "gofile-tool", config.GofileTool, "gofile-downloader脚本路径")
 	rootCmd.PersistentFlags().StringVar(&flagGofileDir, "gofile-dir", config.GofileDir, "gofile下载目录")
@@ -168,6 +170,10 @@ func initConfig() error {
 
 	if flagMaxConcurrent > 0 {
 		config.HTTPMaxConcurrent = flagMaxConcurrent
+	}
+
+	if flagUserAgent != "" {
+		config.HTTPUserAgent = flagUserAgent
 	}
 
 	config.GofileEnable = flagGofileEnable

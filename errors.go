@@ -80,6 +80,16 @@ func NewValidationError(message string) *AppError {
 	}
 }
 
+// NewAuthError creates a new authentication/authorization error
+func NewAuthError(message string, err error) *AppError {
+	return &AppError{
+		Type:    AuthError,
+		Message: message,
+		Err:     err,
+		Code:    "AUTH001",
+	}
+}
+
 // NewIOError creates a new I/O error
 func NewIOError(message string, err error) *AppError {
 	return &AppError{

@@ -281,7 +281,7 @@ func (p *PostParser) ExtractPostFromMultiplePages(parsers []*PostParser) (*Post,
 func (p *PostParser) ExtractMainPost() (*PostEntry, error) {
 	postTable := p.FindElement(p.selectors.PostTable)
 	if postTable == nil || postTable.Length() == 0 {
-		return nil, NewValidationError(fmt.Sprintf("未找到帖子表格 (选择器: %s)", p.selectors.PostTable))
+		return nil, p.classifyMissingPostTableError()
 	}
 
 	postContent := postTable.Find(p.selectors.PostContent)
@@ -296,7 +296,7 @@ func (p *PostParser) ExtractMainPost() (*PostEntry, error) {
 func (p *PostParser) ExtractReplies() ([]PostEntry, error) {
 	postTables := p.FindElements(p.selectors.PostTable)
 	if postTables == nil || postTables.Length() == 0 {
-		return nil, NewValidationError(fmt.Sprintf("未找到帖子表格 (选择器: %s)", p.selectors.PostTable))
+		return nil, p.classifyMissingPostTableError()
 	}
 
 	tableCount := postTables.Length()
@@ -316,6 +316,30 @@ func (p *PostParser) ExtractReplies() ([]PostEntry, error) {
 	}
 
 	return replies, nil
+}
+
+func (p *PostParser) classifyMissingPostTableError() error {
+	pageTitle := strings.TrimSpace(p.FindElement("title").Text())
+	bodyText := strings.ToLower(strings.TrimSpace(p.FindElement("body").Text()))
+	titleText := strings.ToLower(pageTitle)
+
+	if strings.Contains(titleText, "just a moment") ||
+		strings.Contains(titleText, "attention required") ||
+		strings.Contains(bodyText, "cloudflare") ||
+		strings.Contains(bodyText, "cf-challenge") ||
+		strings.Contains(bodyText, "cf-browser-verification") ||
+		strings.Contains(bodyText, "cf_clearance") {
+		return NewAuthError(fmt.Sprintf("疑似触发 Cloudflare 验证或 cf_clearance 已失效，请刷新 Cookie 后重试 (title=%q)", pageTitle), nil)
+	}
+
+	if strings.Contains(bodyText, "登录") ||
+		strings.Contains(bodyText, "log in") ||
+		strings.Contains(bodyText, "please login") ||
+		strings.Contains(bodyText, "winduser") {
+		return NewAuthError(fmt.Sprintf("疑似未登录或登录态失效（可能是 Cookie 的 UA/IP 绑定不一致），请更新 Cookie 或对齐 User-Agent 后重试 (title=%q)", pageTitle), nil)
+	}
+
+	return NewValidationError(fmt.Sprintf("未找到帖子表格 (选择器: %s)", p.selectors.PostTable))
 }
 
 // extractPostEntry extracts a single post entry.

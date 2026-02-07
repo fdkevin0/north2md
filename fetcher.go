@@ -250,32 +250,17 @@ func (f *Fetcher) doRequest(targetURL string) (*http.Response, error) {
 			return
 		}
 
-		cookies := f.cookieManager.GetCookiesForURL(targetURL)
-		for _, cookie := range cookies {
-			httpCookie := &http.Cookie{
-				Name:     cookie.Name,
-				Value:    cookie.Value,
-				Domain:   cookie.Domain,
-				Path:     cookie.Path,
-				Expires:  cookie.Expires,
-				MaxAge:   cookie.MaxAge,
-				Secure:   cookie.Secure,
-				HttpOnly: cookie.HttpOnly,
-			}
-
-			switch cookie.SameSite {
-			case "Lax":
-				httpCookie.SameSite = http.SameSiteLaxMode
-			case "Strict":
-				httpCookie.SameSite = http.SameSiteStrictMode
-			case "None":
-				httpCookie.SameSite = http.SameSiteNoneMode
-			default:
-				httpCookie.SameSite = http.SameSiteDefaultMode
-			}
-
-			r.Headers.Add("Cookie", httpCookie.String())
+		cookies := f.cookieManager.GetCookiesForURL(r.URL.String())
+		cookieHeader := buildCookieRequestHeader(cookies)
+		if cookieHeader != "" {
+			r.Headers.Set("Cookie", cookieHeader)
 		}
+
+		slog.Debug("Applied request cookies",
+			"url", r.URL.String(),
+			"cookie_count", len(cookies),
+			"cookie_names", cookieNames(cookies),
+		)
 	})
 
 	collector.OnResponse(func(r *colly.Response) {
@@ -324,6 +309,35 @@ func (f *Fetcher) doRequest(targetURL string) (*http.Response, error) {
 			URL:    parsedURL,
 		},
 	}, nil
+}
+
+func buildCookieRequestHeader(cookies []*CookieEntry) string {
+	if len(cookies) == 0 {
+		return ""
+	}
+
+	pairs := make([]string, 0, len(cookies))
+	for _, cookie := range cookies {
+		if cookie == nil || cookie.Name == "" {
+			continue
+		}
+
+		// Cookie request header only contains name=value pairs.
+		pairs = append(pairs, cookie.Name+"="+cookie.Value)
+	}
+
+	return strings.Join(pairs, "; ")
+}
+
+func cookieNames(cookies []*CookieEntry) []string {
+	names := make([]string, 0, len(cookies))
+	for _, cookie := range cookies {
+		if cookie == nil || cookie.Name == "" {
+			continue
+		}
+		names = append(names, cookie.Name)
+	}
+	return names
 }
 
 // LoadCookies 从文件加载Cookie
