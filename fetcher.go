@@ -1,6 +1,7 @@
 package south2md
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/PuerkitoBio/goquery"
+	"github.com/gocolly/colly/v2"
 )
 
 // Pre-compiled regex patterns for better performance
@@ -218,23 +219,37 @@ func (f *Fetcher) FetchWithRetry(targetURL string) (*http.Response, error) {
 
 // doRequest 执行单个HTTP请求
 func (f *Fetcher) doRequest(targetURL string) (*http.Response, error) {
-	req, err := http.NewRequest("GET", targetURL, nil)
+	parsedURL, err := url.Parse(targetURL)
 	if err != nil {
 		return nil, NewNetworkError("创建请求失败", err)
 	}
 
-	// 设置User-Agent
-	if f.config.UserAgent != "" {
-		req.Header.Set("User-Agent", f.config.UserAgent)
+	collector := colly.NewCollector()
+	collector.ParseHTTPErrorResponse = true
+	collector.SetRequestTimeout(f.config.Timeout)
+
+	if f.client != nil && f.client.Transport != nil {
+		collector.WithTransport(f.client.Transport)
 	}
 
-	// 设置自定义请求头
-	for key, value := range f.config.CustomHeaders {
-		req.Header.Set(key, value)
-	}
+	var responseBody []byte
+	var responseHeader http.Header
+	var responseStatusCode int
+	var responseErr error
 
-	// 添加Cookie
-	if f.config.EnableCookie {
+	collector.OnRequest(func(r *colly.Request) {
+		if f.config.UserAgent != "" {
+			r.Headers.Set("User-Agent", f.config.UserAgent)
+		}
+
+		for key, value := range f.config.CustomHeaders {
+			r.Headers.Set(key, value)
+		}
+
+		if !f.config.EnableCookie {
+			return
+		}
+
 		cookies := f.cookieManager.GetCookiesForURL(targetURL)
 		for _, cookie := range cookies {
 			httpCookie := &http.Cookie{
@@ -248,7 +263,6 @@ func (f *Fetcher) doRequest(targetURL string) (*http.Response, error) {
 				HttpOnly: cookie.HttpOnly,
 			}
 
-			// 处理SameSite属性
 			switch cookie.SameSite {
 			case "Lax":
 				httpCookie.SameSite = http.SameSiteLaxMode
@@ -260,17 +274,56 @@ func (f *Fetcher) doRequest(targetURL string) (*http.Response, error) {
 				httpCookie.SameSite = http.SameSiteDefaultMode
 			}
 
-			req.AddCookie(httpCookie)
+			r.Headers.Add("Cookie", httpCookie.String())
+		}
+	})
+
+	collector.OnResponse(func(r *colly.Response) {
+		responseStatusCode = r.StatusCode
+		responseBody = append([]byte(nil), r.Body...)
+		responseHeader = cloneHeaders(r.Headers)
+	})
+
+	collector.OnError(func(resp *colly.Response, err error) {
+		if resp != nil {
+			responseStatusCode = resp.StatusCode
+			responseBody = append([]byte(nil), resp.Body...)
+			responseHeader = cloneHeaders(resp.Headers)
+		}
+		responseErr = err
+	})
+
+	if err := collector.Visit(targetURL); err != nil {
+		if responseStatusCode == 0 {
+			if responseErr != nil {
+				return nil, NewNetworkError("执行HTTP请求失败", responseErr)
+			}
+			return nil, NewNetworkError("执行HTTP请求失败", err)
 		}
 	}
 
-	// 执行请求
-	resp, err := f.client.Do(req)
-	if err != nil {
-		return nil, NewNetworkError("执行HTTP请求失败", err)
+	if responseStatusCode == 0 {
+		if responseErr != nil {
+			return nil, NewNetworkError("执行HTTP请求失败", responseErr)
+		}
+		return nil, NewNetworkError("执行HTTP请求失败", fmt.Errorf("empty response"))
 	}
 
-	return resp, nil
+	statusText := http.StatusText(responseStatusCode)
+	if statusText == "" {
+		statusText = "Unknown Status"
+	}
+
+	return &http.Response{
+		Status:     fmt.Sprintf("%d %s", responseStatusCode, statusText),
+		StatusCode: responseStatusCode,
+		Header:     responseHeader,
+		Body:       io.NopCloser(bytes.NewReader(responseBody)),
+		Request: &http.Request{
+			Method: "GET",
+			URL:    parsedURL,
+		},
+	}, nil
 }
 
 // LoadCookies 从文件加载Cookie
@@ -462,10 +515,10 @@ func (f *Fetcher) extractTotalPages(parser *PostParser) int {
 	pageLinks := parser.FindElements("a[href*='page-']")
 	maxPage := 0
 	if pageLinks != nil {
-		pageLinks.Each(func(i int, element *goquery.Selection) {
-			href, exists := element.Attr("href")
+		for i := 0; i < pageLinks.Length(); i++ {
+			href, exists := pageLinks.Eq(i).Attr("href")
 			if !exists {
-				return
+				continue
 			}
 
 			// 使用预编译的正则表达式提取页码
@@ -475,8 +528,22 @@ func (f *Fetcher) extractTotalPages(parser *PostParser) int {
 					maxPage = page
 				}
 			}
-		})
+		}
 	}
 
 	return maxPage
+}
+
+func cloneHeaders(headers *http.Header) http.Header {
+	if headers == nil {
+		return make(http.Header)
+	}
+
+	cloned := make(http.Header, len(*headers))
+	for key, values := range *headers {
+		copied := make([]string, len(values))
+		copy(copied, values)
+		cloned[key] = copied
+	}
+	return cloned
 }
