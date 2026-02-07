@@ -63,6 +63,11 @@ func (g *MarkdownGenerator) GenerateMarkdown(post *Post) (string, error) {
 
 // SavePost 保存帖子到指定目录结构
 func (g *MarkdownGenerator) SavePost(post *Post, baseDir string) error {
+	g.imageHandler.SetRootDir(baseDir)
+	if g.gofileHandler != nil {
+		g.gofileHandler.SetRootDir(baseDir)
+	}
+
 	// 创建以TID命名的目录
 	tidDir := filepath.Join(baseDir, post.TID)
 	if err := os.MkdirAll(tidDir, 0755); err != nil {

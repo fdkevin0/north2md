@@ -24,6 +24,7 @@ import (
 // ImageHandler handles image downloading, caching and processing
 type ImageHandler struct {
 	cacheDir   string
+	rootDir    string
 	mapping    map[string]string
 	httpClient *http.Client
 }
@@ -32,11 +33,24 @@ type ImageHandler struct {
 func NewImageHandler(cacheDir string) *ImageHandler {
 	return &ImageHandler{
 		cacheDir: cacheDir,
+		rootDir:  ".",
 		mapping:  make(map[string]string),
 		httpClient: &http.Client{
 			Timeout: 0, // No timeout for downloads
 		},
 	}
+}
+
+// SetRootDir sets the write root for cached image files.
+func (ih *ImageHandler) SetRootDir(rootDir string) {
+	if ih == nil {
+		return
+	}
+	if rootDir == "" {
+		ih.rootDir = "."
+		return
+	}
+	ih.rootDir = rootDir
 }
 
 // DownloadTask represents an image download task
@@ -209,7 +223,7 @@ func (ih *ImageHandler) downloadImagesConcurrently(tid string, imageURLs []strin
 func (ih *ImageHandler) processDownloadedImage(tid, url string, imageData []byte, post *Post) {
 	hash := md5.Sum(imageData)
 	filename := fmt.Sprintf("%x%s", hash, filepath.Ext(url))
-	filePath := filepath.Join(tid, ih.cacheDir, filename)
+	filePath := filepath.Join(ih.rootDir, tid, ih.cacheDir, filename)
 
 	// Check if file already exists
 	if _, err := os.Stat(filePath); err == nil {

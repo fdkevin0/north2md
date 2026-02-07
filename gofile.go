@@ -22,6 +22,7 @@ type GofileHandler struct {
 	toolPath      string
 	venvDir       string
 	downloadDir   string
+	rootDir       string
 	token         string
 	maxConcurrent int
 	maxRetries    int
@@ -39,6 +40,7 @@ func NewGofileHandler(config *Config) *GofileHandler {
 		toolPath:      config.GofileTool,
 		venvDir:       config.GofileVenvDir,
 		downloadDir:   config.GofileDir,
+		rootDir:       ".",
 		token:         config.GofileToken,
 		maxConcurrent: config.HTTPMaxConcurrent,
 		maxRetries:    config.HTTPMaxRetries,
@@ -46,6 +48,18 @@ func NewGofileHandler(config *Config) *GofileHandler {
 		userAgent:     config.HTTPUserAgent,
 		skipExisting:  config.GofileSkipExisting,
 	}
+}
+
+// SetRootDir sets the write root for gofile downloads.
+func (gh *GofileHandler) SetRootDir(rootDir string) {
+	if gh == nil {
+		return
+	}
+	if rootDir == "" {
+		gh.rootDir = "."
+		return
+	}
+	gh.rootDir = rootDir
 }
 
 // DownloadAndAnnotateGofileLinks downloads gofile links and annotates markdown with local paths.
@@ -63,7 +77,7 @@ func (gh *GofileHandler) DownloadAndAnnotateGofileLinks(tid string, markdown []b
 		return markdown, err
 	}
 
-	baseDir := filepath.Join(tid, gh.downloadDir)
+	baseDir := filepath.Join(gh.rootDir, tid, gh.downloadDir)
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		return markdown, fmt.Errorf("failed to create gofile directory: %w", err)
 	}

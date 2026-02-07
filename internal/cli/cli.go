@@ -19,6 +19,7 @@ var (
 	flagTID        string
 	flagInputFile  string
 	flagOutputFile string
+	flagOffline    bool
 	flagCacheDir   string
 	flagBaseURL    string
 	// 简化：移除部分不常用的参数
@@ -49,17 +50,17 @@ var rootCmd = &cobra.Command{
 - 下载并缓存帖子中的所有附件(图片、文件)
 - 生成格式化的Markdown文档`,
 	Example: `  # 通过TID抓取在线帖子
-  south2md 2636739 --output=post.md
-  south2md --tid=2636739 --output=post.md
+  south2md 2636739
+  south2md --tid=2636739
 
   # 使用Cookie文件登录
-  south2md 2636739 --cookie-file=./cookies.txt --output=post.md
+  south2md 2636739 --cookie-file=./cookies.txt
 
   # 解析本地HTML文件
-  south2md --input=post.html --output=post.md
+  south2md --input=post.html
 
-  # 指定缓存目录
-  south2md 2636739 --cache-dir=./cache --output=post.md`,
+  # 导出已存储帖子到指定目录
+  south2md 2636739 --offline --output=./exports`,
 	RunE: runExtractor,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		south2md.InitLogger(flagDebug)
@@ -91,7 +92,8 @@ func init() {
 	// 根命令参数
 	rootCmd.PersistentFlags().StringVar(&flagTID, "tid", "", "帖子ID (用于在线抓取)")
 	rootCmd.PersistentFlags().StringVar(&flagInputFile, "input", "", "输入HTML文件路径")
-	rootCmd.PersistentFlags().StringVar(&flagOutputFile, "output", "post.md", "输出Markdown文件路径")
+	rootCmd.PersistentFlags().StringVar(&flagOutputFile, "output", "", "导出目录路径（可选）")
+	rootCmd.PersistentFlags().BoolVar(&flagOffline, "offline", false, "离线模式：只从本地库导出，不抓取线上数据")
 	rootCmd.PersistentFlags().StringVar(&flagCacheDir, "cache-dir", config.CacheDir, "附件缓存目录")
 	rootCmd.PersistentFlags().StringVar(&flagBaseURL, "base-url", "https://south-plus.net/", "论坛基础URL")
 	rootCmd.PersistentFlags().StringVar(&flagCookieFile, "cookie-file", config.HTTPCookieFile, "Cookie file path (Netscape format)")
@@ -198,6 +200,33 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 		config.TID = args[0]
 	}
 
+	if flagOffline && flagInputFile != "" {
+		return fmt.Errorf("--offline 模式下不支持 --input")
+	}
+
+	if flagOffline && config.TID == "" {
+		return fmt.Errorf("--offline 模式必须指定帖子ID")
+	}
+
+	storeDir := filepath.Join(south2md.DefaultDataDir("south2md"), "posts")
+	store := south2md.NewPostStore(storeDir)
+	if err := store.EnsureRoot(); err != nil {
+		return fmt.Errorf("初始化本地数据目录失败: %v", err)
+	}
+
+	if flagOffline {
+		if flagOutputFile == "" {
+			return fmt.Errorf("--offline 模式需要指定 --output 导出目录")
+		}
+		exportDir := resolveExportDir(flagOutputFile)
+		exportedDir, err := store.ExportPost(config.TID, exportDir)
+		if err != nil {
+			return fmt.Errorf("离线导出失败: %v", err)
+		}
+		fmt.Printf("✓ 离线导出完成: %s\n", exportedDir)
+		return nil
+	}
+
 	// 创建HTTP客户端
 	httpOptions := &south2md.HTTPOptions{
 		Timeout:       config.HTTPTimeout,
@@ -279,26 +308,41 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("必须指定帖子ID或 --input 参数")
 	}
 
-	// 创建输出目录
-	outputDir := filepath.Dir(config.OutputFile)
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return fmt.Errorf("创建输出目录失败: %v", err)
+	if post.TID == "" {
+		post.TID = config.TID
+	}
+	if post.TID == "" {
+		return fmt.Errorf("无法确定帖子ID，请提供 --tid")
 	}
 
-	// 获取基础目录
-	baseDir := outputDir
-	if config.OutputFile != "post.md" {
-		baseDir = filepath.Dir(config.OutputFile)
+	// 始终先入库到 XDG data 目录
+	fmt.Println("正在保存帖子到本地库...")
+	if err := markdownGenerator.SavePost(post, store.RootDir()); err != nil {
+		return fmt.Errorf("保存帖子到本地库失败: %v", err)
+	}
+	fmt.Printf("✓ 帖子已存储到 %s/%s/\n", store.RootDir(), post.TID)
+
+	// 可选导出
+	if flagOutputFile != "" {
+		exportDir := resolveExportDir(flagOutputFile)
+		exportedDir, err := store.ExportPost(post.TID, exportDir)
+		if err != nil {
+			return fmt.Errorf("导出帖子失败: %v", err)
+		}
+		fmt.Printf("✓ 帖子已导出到 %s\n", exportedDir)
 	}
 
-	// 保存帖子
-	fmt.Println("正在保存帖子...")
-	if err := markdownGenerator.SavePost(post, baseDir); err != nil {
-		return fmt.Errorf("保存帖子失败: %v", err)
-	}
-
-	fmt.Printf("✓ 帖子已保存到 %s/%s/\n", baseDir, post.TID)
 	return nil
+}
+
+func resolveExportDir(output string) string {
+	if output == "" {
+		return ""
+	}
+	if strings.EqualFold(filepath.Ext(output), ".md") {
+		return filepath.Dir(output)
+	}
+	return output
 }
 
 // runCookieImport 运行 cookie 导入命令
