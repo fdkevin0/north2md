@@ -25,6 +25,7 @@ import (
 type ImageHandler struct {
 	cacheDir   string
 	rootDir    string
+	download   bool
 	mapping    map[string]string
 	httpClient *http.Client
 }
@@ -34,6 +35,7 @@ func NewImageHandler(cacheDir string) *ImageHandler {
 	return &ImageHandler{
 		cacheDir: cacheDir,
 		rootDir:  ".",
+		download: true,
 		mapping:  make(map[string]string),
 		httpClient: &http.Client{
 			Timeout: 0, // No timeout for downloads
@@ -51,6 +53,14 @@ func (ih *ImageHandler) SetRootDir(rootDir string) {
 		return
 	}
 	ih.rootDir = rootDir
+}
+
+// SetDownloadEnabled controls whether missing remote images are downloaded.
+func (ih *ImageHandler) SetDownloadEnabled(enabled bool) {
+	if ih == nil {
+		return
+	}
+	ih.download = enabled
 }
 
 // DownloadTask represents an image download task
@@ -141,8 +151,10 @@ func (ih *ImageHandler) DownloadAndCacheImages(tid string, mdDoc []byte, post *P
 		return ih.convertASTToMarkdown(md, mdDoc, doc)
 	}
 
-	// Step 3: Download images concurrently
-	ih.downloadImagesConcurrently(tid, imageURLs, post)
+	// Step 3: Download images concurrently when enabled
+	if ih.download {
+		ih.downloadImagesConcurrently(tid, imageURLs, post)
+	}
 
 	// Step 4: Walk the AST again to replace URLs with cached paths
 	err = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {

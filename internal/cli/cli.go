@@ -218,10 +218,19 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 		if flagOutputFile == "" {
 			return fmt.Errorf("--offline 模式需要指定 --output 导出目录")
 		}
+		exportGenerator := newMarkdownGenerator()
+		exportGenerator.SetDownloadEnabled(false)
+		post, err := store.LoadPostFromStore(config.TID)
+		if err != nil {
+			return fmt.Errorf("离线加载帖子失败: %v", err)
+		}
 		exportDir := resolveExportDir(flagOutputFile)
 		exportedDir, err := store.ExportPost(config.TID, exportDir)
 		if err != nil {
 			return fmt.Errorf("离线导出失败: %v", err)
+		}
+		if err := exportGenerator.ExportPost(post, exportDir); err != nil {
+			return fmt.Errorf("离线导出Markdown失败: %v", err)
 		}
 		fmt.Printf("✓ 离线导出完成: %s\n", exportedDir)
 		return nil
@@ -257,20 +266,7 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 		Images:      config.SelectorImages,
 	})
 
-	// 创建Markdown生成器
-	var gofileHandler *south2md.GofileHandler
-	if config.GofileEnable {
-		gofileHandler = south2md.NewGofileHandler(config)
-	}
-
-	markdownGenerator := south2md.NewMarkdownGenerator(&south2md.MarkdownOptions{
-		IncludeAuthorInfo: config.MarkdownIncludeAuthorInfo,
-		IncludeImages:     config.MarkdownIncludeImages,
-		ImageStyle:        config.MarkdownImageStyle,
-		TableOfContents:   config.MarkdownTableOfContents,
-		IncludeTOC:        config.MarkdownIncludeTOC,
-		FloorNumbering:    config.MarkdownFloorNumbering,
-	}, gofileHandler)
+	markdownGenerator := newMarkdownGenerator()
 
 	// 获取帖子内容
 	var post *south2md.Post
@@ -317,7 +313,7 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 
 	// 始终先入库到 XDG data 目录
 	fmt.Println("正在保存帖子到本地库...")
-	if err := markdownGenerator.SavePost(post, store.RootDir()); err != nil {
+	if err := markdownGenerator.StorePost(post, store.RootDir()); err != nil {
 		return fmt.Errorf("保存帖子到本地库失败: %v", err)
 	}
 	fmt.Printf("✓ 帖子已存储到 %s/%s/\n", store.RootDir(), post.TID)
@@ -329,10 +325,28 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("导出帖子失败: %v", err)
 		}
+		if err := markdownGenerator.ExportPost(post, exportDir); err != nil {
+			return fmt.Errorf("导出Markdown失败: %v", err)
+		}
 		fmt.Printf("✓ 帖子已导出到 %s\n", exportedDir)
 	}
 
 	return nil
+}
+
+func newMarkdownGenerator() *south2md.MarkdownGenerator {
+	var gofileHandler *south2md.GofileHandler
+	if config.GofileEnable {
+		gofileHandler = south2md.NewGofileHandler(config)
+	}
+	return south2md.NewMarkdownGenerator(&south2md.MarkdownOptions{
+		IncludeAuthorInfo: config.MarkdownIncludeAuthorInfo,
+		IncludeImages:     config.MarkdownIncludeImages,
+		ImageStyle:        config.MarkdownImageStyle,
+		TableOfContents:   config.MarkdownTableOfContents,
+		IncludeTOC:        config.MarkdownIncludeTOC,
+		FloorNumbering:    config.MarkdownFloorNumbering,
+	}, gofileHandler)
 }
 
 func resolveExportDir(output string) string {

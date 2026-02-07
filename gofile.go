@@ -27,6 +27,7 @@ type GofileHandler struct {
 	venvDir       string
 	downloadDir   string
 	rootDir       string
+	download      bool
 	token         string
 	maxConcurrent int
 	maxRetries    int
@@ -75,6 +76,7 @@ func NewGofileHandler(config *Config) *GofileHandler {
 		venvDir:       config.GofileVenvDir,
 		downloadDir:   config.GofileDir,
 		rootDir:       ".",
+		download:      true,
 		token:         config.GofileToken,
 		maxConcurrent: config.HTTPMaxConcurrent,
 		maxRetries:    max(1, config.HTTPMaxRetries),
@@ -99,6 +101,14 @@ func (gh *GofileHandler) SetRootDir(rootDir string) {
 	gh.rootDir = rootDir
 }
 
+// SetDownloadEnabled controls whether gofile content is downloaded.
+func (gh *GofileHandler) SetDownloadEnabled(enabled bool) {
+	if gh == nil {
+		return
+	}
+	gh.download = enabled
+}
+
 // DownloadAndAnnotateGofileLinks downloads gofile links and annotates markdown with local paths.
 func (gh *GofileHandler) DownloadAndAnnotateGofileLinks(tid string, markdown []byte, post *Post) ([]byte, error) {
 	if gh == nil {
@@ -108,6 +118,15 @@ func (gh *GofileHandler) DownloadAndAnnotateGofileLinks(tid string, markdown []b
 	urls := ExtractGofileLinks(string(markdown))
 	if len(urls) == 0 {
 		return markdown, nil
+	}
+
+	if !gh.download {
+		mapping := gh.mappingFromRecords(post, urls)
+		if len(mapping) == 0 {
+			return markdown, nil
+		}
+		annotated := annotateGofileLinks(string(markdown), mapping)
+		return []byte(annotated), nil
 	}
 
 	baseDir := filepath.Join(gh.rootDir, tid, gh.downloadDir)
@@ -126,6 +145,28 @@ func (gh *GofileHandler) DownloadAndAnnotateGofileLinks(tid string, markdown []b
 
 	annotated := annotateGofileLinks(string(markdown), mapping)
 	return []byte(annotated), nil
+}
+
+func (gh *GofileHandler) mappingFromRecords(post *Post, urls []string) map[string]string {
+	if post == nil || len(post.GofileFiles) == 0 {
+		return nil
+	}
+
+	recordByURL := make(map[string]string, len(post.GofileFiles))
+	for _, record := range post.GofileFiles {
+		if record.URL == "" || !record.Downloaded || record.LocalDir == "" {
+			continue
+		}
+		recordByURL[record.URL] = record.LocalDir
+	}
+
+	mapping := make(map[string]string, len(urls))
+	for _, u := range urls {
+		if local, ok := recordByURL[u]; ok {
+			mapping[u] = local
+		}
+	}
+	return mapping
 }
 
 // ExtractGofileLinks finds gofile share links in markdown.

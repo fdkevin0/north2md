@@ -26,6 +26,17 @@ func NewMarkdownGenerator(options *MarkdownOptions, gofileHandler *GofileHandler
 	}
 }
 
+// SetDownloadEnabled controls whether generator may download missing assets while rendering.
+func (g *MarkdownGenerator) SetDownloadEnabled(enabled bool) {
+	if g == nil {
+		return
+	}
+	g.imageHandler.SetDownloadEnabled(enabled)
+	if g.gofileHandler != nil {
+		g.gofileHandler.SetDownloadEnabled(enabled)
+	}
+}
+
 // GenerateMarkdown 生成完整的Markdown文档
 func (g *MarkdownGenerator) GenerateMarkdown(post *Post) (string, error) {
 	var md strings.Builder
@@ -61,8 +72,7 @@ func (g *MarkdownGenerator) GenerateMarkdown(post *Post) (string, error) {
 	return md.String(), nil
 }
 
-// SavePost 保存帖子到指定目录结构
-func (g *MarkdownGenerator) SavePost(post *Post, baseDir string) error {
+func (g *MarkdownGenerator) preparePostDir(post *Post, baseDir string) (string, string, error) {
 	g.imageHandler.SetRootDir(baseDir)
 	if g.gofileHandler != nil {
 		g.gofileHandler.SetRootDir(baseDir)
@@ -71,17 +81,17 @@ func (g *MarkdownGenerator) SavePost(post *Post, baseDir string) error {
 	// 创建以TID命名的目录
 	tidDir := filepath.Join(baseDir, post.TID)
 	if err := os.MkdirAll(tidDir, 0755); err != nil {
-		return fmt.Errorf("创建目录失败: %v", err)
+		return "", "", fmt.Errorf("创建目录失败: %v", err)
 	}
 
 	imagesDir := filepath.Join(tidDir, "images")
 	gofileDir := filepath.Join(tidDir, "gofile")
 
 	if err := os.MkdirAll(imagesDir, 0755); err != nil {
-		return fmt.Errorf("创建images目录失败: %v", err)
+		return "", "", fmt.Errorf("创建images目录失败: %v", err)
 	}
 	if err := os.MkdirAll(gofileDir, 0755); err != nil {
-		return fmt.Errorf("创建gofile目录失败: %v", err)
+		return "", "", fmt.Errorf("创建gofile目录失败: %v", err)
 	}
 
 	// 检查是否存在现有metadata，如果存在则加载图片缓存信息
@@ -102,17 +112,19 @@ func (g *MarkdownGenerator) SavePost(post *Post, baseDir string) error {
 			slog.Warn("Failed to read existing metadata", "error", err)
 		}
 	}
+	return tidDir, metadataFile, nil
+}
 
-	// 生成Markdown内容
-	markdown, err := g.GenerateMarkdown(post)
+// StorePost stores post data and assets without generating post.md.
+func (g *MarkdownGenerator) StorePost(post *Post, baseDir string) error {
+	_, metadataFile, err := g.preparePostDir(post, baseDir)
 	if err != nil {
-		return fmt.Errorf("生成Markdown失败: %v", err)
+		return err
 	}
 
-	// 保存post.md文件
-	postFile := filepath.Join(tidDir, "post.md")
-	if err := os.WriteFile(postFile, []byte(markdown), 0644); err != nil {
-		return fmt.Errorf("保存post.md失败: %v", err)
+	// Render once to populate/update local assets and metadata references.
+	if _, err := g.GenerateMarkdown(post); err != nil {
+		return fmt.Errorf("生成Markdown失败: %v", err)
 	}
 
 	// 保存元数据
@@ -125,5 +137,32 @@ func (g *MarkdownGenerator) SavePost(post *Post, baseDir string) error {
 		return fmt.Errorf("保存metadata.toml失败: %v", err)
 	}
 
+	return nil
+}
+
+// ExportPost generates post.md for one post under baseDir/<tid>/.
+func (g *MarkdownGenerator) ExportPost(post *Post, baseDir string) error {
+	tidDir, metadataFile, err := g.preparePostDir(post, baseDir)
+	if err != nil {
+		return err
+	}
+
+	markdown, err := g.GenerateMarkdown(post)
+	if err != nil {
+		return fmt.Errorf("生成Markdown失败: %v", err)
+	}
+
+	postFile := filepath.Join(tidDir, "post.md")
+	if err := os.WriteFile(postFile, []byte(markdown), 0644); err != nil {
+		return fmt.Errorf("保存post.md失败: %v", err)
+	}
+
+	metadata, err := toml.Marshal(post)
+	if err != nil {
+		return fmt.Errorf("生成元数据失败: %v", err)
+	}
+	if err := os.WriteFile(metadataFile, metadata, 0644); err != nil {
+		return fmt.Errorf("保存metadata.toml失败: %v", err)
+	}
 	return nil
 }
