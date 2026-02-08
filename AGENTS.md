@@ -1,3 +1,5 @@
+# Repository Guidelines
+
 ## 0 · 关于用户与你的角色
 
 * 你正在协助的对象是 **FDKevin**。
@@ -354,3 +356,46 @@
   * 正确性与鲁棒性；
   * 可维护性与演进策略。
 * 在没有必要澄清的重要信息缺失时，尽量减少无谓往返和问题式对话，直接给出高质量思考后的结论与实现建议。
+
+## Project Structure & Module Organization
+This repository is a Go CLI application for scraping and exporting forum threads to Markdown.
+
+- `cmd/south2md/main.go`: CLI entrypoint.
+- `internal/cli/`: Cobra command wiring and CLI flow.
+- `*.go` in repository root: core domain logic (fetching, parsing, config, markdown generation, storage, cookie handling).
+- `*_test.go`: unit tests colocated with implementation files.
+- `docs/`: design notes and execution plans.
+- Sample artifacts like `tid-*.html` / `tid-*.toml` are local fixtures/reference data.
+
+## Build, Test, and Development Commands
+- `go run ./cmd/south2md --help`: run CLI locally and inspect commands.
+- `go build ./cmd/south2md`: build the executable.
+- `go test ./...`: run all unit tests.
+- `go test ./... -cover`: run tests with coverage output.
+- `go test ./... -run TestCookie`: run a focused test subset while iterating.
+
+Use Go 1.24+ (see `go.mod`).
+
+## Coding Style & Naming Conventions
+- Format code with `gofmt` (or `go fmt ./...`) before committing.
+- Keep package/file names lowercase; use descriptive names (for example `fetcher.go`, `md_formatter.go`).
+- Exported identifiers use `PascalCase`; internal helpers use `camelCase`.
+- Preserve existing patterns: small focused files, clear error wrapping, and explicit config structs.
+
+## Testing Guidelines
+- Use the standard `testing` package with table-driven tests where practical.
+- Name tests as `TestXxx` and keep them in `*_test.go` beside the tested code.
+- Add tests for parser/fetcher/config behavior changes and edge cases around cookies/storage paths.
+- Run `go test ./...` before opening a PR.
+
+## Commit & Pull Request Guidelines
+- Follow Conventional Commit style used in history:
+  - `feat(cli): ...`
+  - `fix(gofile): ...`
+  - `refactor(parser,fetcher): ...`
+- Keep commits scoped to one logical change.
+- PRs should include:
+  - brief problem statement and solution summary,
+  - linked issue (if available),
+  - test evidence (`go test ./...` output or equivalent),
+  - CLI output/examples when behavior changes.
