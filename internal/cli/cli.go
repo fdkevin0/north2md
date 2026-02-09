@@ -167,10 +167,8 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 	// 创建Fetcher
 	httpClient := south2md.NewFetcher(client, httpOptions, cfg.BaseURL)
 
-	selectors := buildSelectors(cfg)
-
 	// 创建帖子解析器
-	postParser := south2md.NewPostParser(selectors)
+	postParser := south2md.NewPostParser()
 
 	markdownGenerator := newMarkdownGenerator(cfg)
 
@@ -180,7 +178,7 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 	if cfg.TID != "" {
 		// 在线抓取模式
 		var fetchErr error
-		post, fetchErr = httpClient.FetchPostWithPagination(cfg.TID, postParser, selectors)
+		post, fetchErr = httpClient.FetchPostWithPagination(cfg.TID, postParser)
 		if fetchErr != nil {
 			return fmt.Errorf("抓取帖子失败: %v", fetchErr)
 		}
@@ -241,21 +239,6 @@ func buildHTTPOptions(cfg *south2md.Config) *south2md.HTTPOptions {
 		CookieFile:       cfg.HTTPCookieFile,
 		EnableCookie:     cfg.HTTPEnableCookie,
 		CustomHeaders:    cfg.HTTPCustomHeaders,
-	}
-}
-
-func buildSelectors(cfg *south2md.Config) *south2md.HTMLSelectors {
-	return &south2md.HTMLSelectors{
-		Title:       cfg.SelectorTitle,
-		Forum:       cfg.SelectorForum,
-		PostTable:   cfg.SelectorPostTable,
-		AuthorName:  cfg.SelectorAuthorName,
-		PostTime:    cfg.SelectorPostTime,
-		PostContent: cfg.SelectorPostContent,
-		Floor:       cfg.SelectorFloor,
-		AuthorInfo:  cfg.SelectorAuthorInfo,
-		Avatar:      cfg.SelectorAvatar,
-		Images:      cfg.SelectorImages,
 	}
 }
 

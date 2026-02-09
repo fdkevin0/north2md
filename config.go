@@ -14,18 +14,6 @@ type Config struct {
 	OutputFile string `toml:"output_file" mapstructure:"output_file"` // 输出Markdown文件路径
 	CacheDir   string `toml:"cache_dir" mapstructure:"cache_dir"`     // 附件缓存目录
 
-	// CSS选择器配置
-	SelectorTitle       string `toml:"title" mapstructure:"title"`               // 标题选择器
-	SelectorForum       string `toml:"forum" mapstructure:"forum"`               // 版块选择器
-	SelectorPostTable   string `toml:"post_table" mapstructure:"post_table"`     // 帖子表格选择器
-	SelectorAuthorName  string `toml:"author_name" mapstructure:"author_name"`   // 作者名称选择器
-	SelectorPostTime    string `toml:"post_time" mapstructure:"post_time"`       // 发帖时间选择器
-	SelectorPostContent string `toml:"post_content" mapstructure:"post_content"` // 帖子内容选择器
-	SelectorFloor       string `toml:"floor" mapstructure:"floor"`               // 楼层选择器
-	SelectorAuthorInfo  string `toml:"author_info" mapstructure:"author_info"`   // 作者信息区域选择器
-	SelectorAvatar      string `toml:"avatar" mapstructure:"avatar"`             // 头像选择器
-	SelectorImages      string `toml:"images" mapstructure:"images"`             // 图片选择器
-
 	// HTTP请求配置
 	HTTPTimeout          time.Duration     `toml:"timeout" mapstructure:"timeout"`                     // 请求超时时间
 	HTTPUserAgent        string            `toml:"user_agent" mapstructure:"user_agent"`               // User-Agent
@@ -61,7 +49,7 @@ type Config struct {
 	GofileSkipExisting bool   `toml:"gofile_skip_existing" mapstructure:"gofile_skip_existing"` // Skip already downloaded content
 }
 
-// HTTPOptions HTTP请求配置 (向后兼容)
+// HTTPOptions HTTP请求配置
 type HTTPOptions struct {
 	Timeout          time.Duration     `toml:"timeout"`
 	UserAgent        string            `toml:"user_agent"`
@@ -74,21 +62,7 @@ type HTTPOptions struct {
 	CustomHeaders    map[string]string `toml:"custom_headers"`
 }
 
-// HTMLSelectors CSS选择器配置 (向后兼容)
-type HTMLSelectors struct {
-	Title       string `toml:"title"`
-	Forum       string `toml:"forum"`
-	PostTable   string `toml:"post_table"`
-	AuthorName  string `toml:"author_name"`
-	PostTime    string `toml:"post_time"`
-	PostContent string `toml:"post_content"`
-	Floor       string `toml:"floor"`
-	AuthorInfo  string `toml:"author_info"`
-	Avatar      string `toml:"avatar"`
-	Images      string `toml:"images"`
-}
-
-// MarkdownOptions Markdown生成选项 (向后兼容)
+// MarkdownOptions Markdown生成选项
 type MarkdownOptions struct {
 	IncludeAuthorInfo bool   `toml:"include_author_info"`
 	IncludeImages     bool   `toml:"include_images"`
@@ -103,18 +77,6 @@ var defaultConfig = &Config{
 	BaseURL:    "https://south-plus.net/",
 	OutputFile: "post.md",
 	CacheDir:   DefaultCacheDir("south2md"),
-
-	// CSS选择器配置
-	SelectorTitle:       "h1#subject_tpc",
-	SelectorForum:       "#breadcrumbs .crumbs-item.gray3:nth-child(3)",
-	SelectorPostTable:   "table.js-post",
-	SelectorAuthorName:  "strong",
-	SelectorPostTime:    ".tiptop .gray",
-	SelectorPostContent: "div[id^='read_']",
-	SelectorFloor:       ".tiptop .fl a",
-	SelectorAuthorInfo:  ".tiptop .tar",
-	SelectorAvatar:      "img[src*=\"avatar\"]",
-	SelectorImages:      "img",
 
 	// HTTP配置
 	HTTPTimeout:          30 * time.Second,

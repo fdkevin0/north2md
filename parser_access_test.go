@@ -3,9 +3,7 @@ package south2md
 import "testing"
 
 func TestExtractMainPostReturnsAuthErrorForCloudflarePage(t *testing.T) {
-	parser := NewPostParser(&HTMLSelectors{
-		PostTable: "table.js-post",
-	})
+	parser := NewPostParser()
 
 	html := `<!doctype html>
 <html>
@@ -35,9 +33,7 @@ func TestExtractMainPostReturnsAuthErrorForCloudflarePage(t *testing.T) {
 }
 
 func TestExtractMainPostReturnsValidationErrorForGenericPage(t *testing.T) {
-	parser := NewPostParser(&HTMLSelectors{
-		PostTable: "table.js-post",
-	})
+	parser := NewPostParser()
 
 	html := `<!doctype html><html><head><title>Normal page</title></head><body>hello</body></html>`
 	if err := parser.LoadFromString(html); err != nil {

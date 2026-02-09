@@ -17,7 +17,6 @@ import (
 	"golang.org/x/net/html"
 )
 
-// Pre-compiled regex patterns for better performance
 var (
 	uidPattern          = regexp.MustCompile(`UID:\s*(\d+)`)
 	postCountPattern    = regexp.MustCompile(`发帖:\s*(\d+)`)
@@ -31,6 +30,22 @@ var (
 
 type DOMSelection struct {
 	nodes []*html.Node
+}
+
+type htmlSelectors struct {
+	title       string
+	forum       string
+	postTable   string
+	postTime    string
+	postContent string
+}
+
+var defaultHTMLSelectors = htmlSelectors{
+	title:       "h1#subject_tpc",
+	forum:       "#breadcrumbs .crumbs-item.gray3:nth-child(3)",
+	postTable:   "table.js-post",
+	postTime:    ".tiptop .gray",
+	postContent: "div[id^='read_']",
 }
 
 func (s *DOMSelection) Length() int {
@@ -131,13 +146,13 @@ func compileSelector(selector string) (cascadia.Selector, error) {
 type PostParser struct {
 	doc       *html.Node
 	baseURL   string
-	selectors *HTMLSelectors
+	selectors htmlSelectors
 }
 
 // NewPostParser creates a new post parser.
-func NewPostParser(selectors *HTMLSelectors) *PostParser {
+func NewPostParser() *PostParser {
 	return &PostParser{
-		selectors: selectors,
+		selectors: defaultHTMLSelectors,
 	}
 }
 
@@ -218,12 +233,12 @@ func (p *PostParser) ExtractPost() (*Post, error) {
 		CreatedAt: time.Now(),
 	}
 
-	titleElement := p.FindElement(p.selectors.Title)
+	titleElement := p.FindElement(p.selectors.title)
 	if titleElement != nil && titleElement.Length() > 0 {
 		post.Title = strings.TrimSpace(titleElement.Text())
 	}
 
-	forumElement := p.FindElement(p.selectors.Forum)
+	forumElement := p.FindElement(p.selectors.forum)
 	if forumElement != nil && forumElement.Length() > 0 {
 		post.Forum = p.extractForumName(forumElement)
 	}
@@ -279,14 +294,14 @@ func (p *PostParser) ExtractPostFromMultiplePages(parsers []*PostParser) (*Post,
 
 // ExtractMainPost extracts the main post.
 func (p *PostParser) ExtractMainPost() (*PostEntry, error) {
-	postTable := p.FindElement(p.selectors.PostTable)
+	postTable := p.FindElement(p.selectors.postTable)
 	if postTable == nil || postTable.Length() == 0 {
 		return nil, p.classifyMissingPostTableError()
 	}
 
-	postContent := postTable.Find(p.selectors.PostContent)
+	postContent := postTable.Find(p.selectors.postContent)
 	if postContent == nil || postContent.Length() == 0 {
-		return nil, NewValidationError(fmt.Sprintf("未找到帖子内容 (选择器: %s)", p.selectors.PostContent))
+		return nil, NewValidationError(fmt.Sprintf("未找到帖子内容 (选择器: %s)", p.selectors.postContent))
 	}
 
 	return p.extractPostEntry(postTable, "GF")
@@ -294,7 +309,7 @@ func (p *PostParser) ExtractMainPost() (*PostEntry, error) {
 
 // ExtractReplies extracts all replies.
 func (p *PostParser) ExtractReplies() ([]PostEntry, error) {
-	postTables := p.FindElements(p.selectors.PostTable)
+	postTables := p.FindElements(p.selectors.postTable)
 	if postTables == nil || postTables.Length() == 0 {
 		return nil, p.classifyMissingPostTableError()
 	}
@@ -339,7 +354,7 @@ func (p *PostParser) classifyMissingPostTableError() error {
 		return NewAuthError(fmt.Sprintf("疑似未登录或登录态失效（可能是 Cookie 的 UA/IP 绑定不一致），请更新 Cookie 或对齐 User-Agent 后重试 (title=%q)", pageTitle), nil)
 	}
 
-	return NewValidationError(fmt.Sprintf("未找到帖子表格 (选择器: %s)", p.selectors.PostTable))
+	return NewValidationError(fmt.Sprintf("未找到帖子表格 (选择器: %s)", p.selectors.postTable))
 }
 
 // extractPostEntry extracts a single post entry.
@@ -354,12 +369,12 @@ func (p *PostParser) extractPostEntry(table *DOMSelection, floor string) (*PostE
 	}
 	entry.Author = *author
 
-	timeElement := table.Find(p.selectors.PostTime)
+	timeElement := table.Find(p.selectors.postTime)
 	if timeElement.Length() > 0 {
 		entry.PostTime = p.parsePostTime(timeElement.First().Text())
 	}
 
-	contentElement := table.Find(p.selectors.PostContent)
+	contentElement := table.Find(p.selectors.postContent)
 	if contentElement.Length() > 0 {
 		if htmlContent, err := contentElement.Html(); err == nil {
 			entry.HTMLContent = p.cleanHTMLContent(htmlContent)

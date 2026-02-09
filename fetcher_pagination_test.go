@@ -6,9 +6,8 @@ import (
 )
 
 func TestResolvePageFetchResultsStrictModeReturnsError(t *testing.T) {
-	selectors := defaultSelectorsForPaginationTest()
-	page1 := NewPostParser(selectors)
-	page2 := NewPostParser(selectors)
+	page1 := NewPostParser()
+	page2 := NewPostParser()
 
 	_, err := resolvePageFetchResults([]*PostParser{page1, page2, nil}, []int{3}, true)
 	if err == nil {
@@ -20,9 +19,8 @@ func TestResolvePageFetchResultsStrictModeReturnsError(t *testing.T) {
 }
 
 func TestResolvePageFetchResultsNonStrictModeSkipsFailedPages(t *testing.T) {
-	selectors := defaultSelectorsForPaginationTest()
-	page1 := NewPostParser(selectors)
-	page2 := NewPostParser(selectors)
+	page1 := NewPostParser()
+	page2 := NewPostParser()
 
 	parsers, err := resolvePageFetchResults([]*PostParser{page1, page2, nil}, []int{3}, false)
 	if err != nil {
@@ -30,21 +28,5 @@ func TestResolvePageFetchResultsNonStrictModeSkipsFailedPages(t *testing.T) {
 	}
 	if len(parsers) != 2 {
 		t.Fatalf("expected 2 parsers, got %d", len(parsers))
-	}
-}
-
-func defaultSelectorsForPaginationTest() *HTMLSelectors {
-	cfg := NewDefaultConfig()
-	return &HTMLSelectors{
-		Title:       cfg.SelectorTitle,
-		Forum:       cfg.SelectorForum,
-		PostTable:   cfg.SelectorPostTable,
-		AuthorName:  cfg.SelectorAuthorName,
-		PostTime:    cfg.SelectorPostTime,
-		PostContent: cfg.SelectorPostContent,
-		Floor:       cfg.SelectorFloor,
-		AuthorInfo:  cfg.SelectorAuthorInfo,
-		Avatar:      cfg.SelectorAvatar,
-		Images:      cfg.SelectorImages,
 	}
 }

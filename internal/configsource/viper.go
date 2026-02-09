@@ -37,7 +37,7 @@ func NewViperForCommand(cmd *cobra.Command, configFlagValue string) (*viper.Vipe
 		}
 	}
 
-	applyCompatibilityOverrides(v, cmd)
+	applyDerivedOverrides(v, cmd)
 	return v, nil
 }
 
@@ -69,11 +69,7 @@ func bindViperFlags(v *viper.Viper, cmd *cobra.Command) error {
 	return nil
 }
 
-func applyCompatibilityOverrides(v *viper.Viper, cmd *cobra.Command) {
-	if raw, ok := os.LookupEnv("SOUTH2MD_OUTPUT"); ok {
-		v.Set("output_file", strings.TrimSpace(raw))
-	}
-
+func applyDerivedOverrides(v *viper.Viper, cmd *cobra.Command) {
 	_, hasEnvNoCache := os.LookupEnv("SOUTH2MD_NO_CACHE")
 	if flagChanged(cmd, "no-cache") || hasEnvNoCache || v.InConfig("no_cache") {
 		v.Set("enable_cache", !v.GetBool("no_cache"))

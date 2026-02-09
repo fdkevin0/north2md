@@ -360,7 +360,7 @@ func (f *Fetcher) SaveCookies(cookieFile string) error {
 }
 
 // FetchPostWithPagination 获取指定TID的帖子（自动处理分页）
-func (f *Fetcher) FetchPostWithPagination(tid string, postParser *PostParser, selectors *HTMLSelectors) (*Post, error) {
+func (f *Fetcher) FetchPostWithPagination(tid string, postParser *PostParser) (*Post, error) {
 	// 首先获取第一页以确定总页数
 	firstPageHTML, err := f.FetchPost(tid)
 	if err != nil {
@@ -387,7 +387,7 @@ func (f *Fetcher) FetchPostWithPagination(tid string, postParser *PostParser, se
 
 	// 并发获取剩余页面
 	if totalPages > 1 {
-		parsers, err = f.fetchPagesConcurrently(tid, totalPages, selectors, parsers)
+		parsers, err = f.fetchPagesConcurrently(tid, totalPages, parsers)
 		if err != nil {
 			return nil, err
 		}
@@ -407,7 +407,7 @@ func (f *Fetcher) FetchPostWithPagination(tid string, postParser *PostParser, se
 }
 
 // fetchPagesConcurrently 并发获取帖子的所有页面
-func (f *Fetcher) fetchPagesConcurrently(tid string, totalPages int, selectors *HTMLSelectors, parsers []*PostParser) ([]*PostParser, error) {
+func (f *Fetcher) fetchPagesConcurrently(tid string, totalPages int, parsers []*PostParser) ([]*PostParser, error) {
 	numWorkers := runtime.NumCPU()
 	if numWorkers > f.config.MaxConcurrent {
 		numWorkers = f.config.MaxConcurrent
@@ -423,7 +423,7 @@ func (f *Fetcher) fetchPagesConcurrently(tid string, totalPages int, selectors *
 	// 启动工作池
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
-		go f.fetchPageWorker(tasks, results, selectors, &wg)
+		go f.fetchPageWorker(tasks, results, &wg)
 	}
 
 	// 发送任务
@@ -476,7 +476,7 @@ type PageFetchResult struct {
 }
 
 // fetchPageWorker is a worker that fetches pages concurrently
-func (f *Fetcher) fetchPageWorker(tasks <-chan PageFetchTask, results chan<- PageFetchResult, selectors *HTMLSelectors, wg *sync.WaitGroup) {
+func (f *Fetcher) fetchPageWorker(tasks <-chan PageFetchTask, results chan<- PageFetchResult, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for task := range tasks {
@@ -490,7 +490,7 @@ func (f *Fetcher) fetchPageWorker(tasks <-chan PageFetchTask, results chan<- Pag
 		}
 
 		// Create parser for this page
-		pageParser := NewPostParser(selectors)
+		pageParser := NewPostParser()
 		if err := pageParser.LoadFromString(pageHTML); err != nil {
 			results <- PageFetchResult{
 				Page:  task.Page,
