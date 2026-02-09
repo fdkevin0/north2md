@@ -117,8 +117,7 @@ func (cm *CookieManager) LoadFromFile(filepath string) error {
 	if !lo.ContainsBy(cm.jar.Cookies, func(item CookieEntry) bool {
 		return item.Name == "eb9e6_winduser"
 	}) {
-		slog.Warn("User not logged in, clearing cookies")
-		cm.ClearCookies()
+		slog.Warn("User not logged in, login cookie missing", "cookie_name", "eb9e6_winduser")
 	}
 
 	return nil

@@ -80,7 +80,7 @@ func TestCookieFileSaveAndReload(t *testing.T) {
 		Path:     "/",
 		Secure:   true,
 		HttpOnly: true,
-		Expires:  time.Unix(1700000000, 0),
+		Expires:  time.Unix(4102444800, 0),
 	})
 	cm.AddCookie(&CookieEntry{
 		Name:   "b",
@@ -107,6 +107,39 @@ func TestCookieFileSaveAndReload(t *testing.T) {
 	}
 	if len(reload.jar.Cookies) != 2 {
 		t.Fatalf("unexpected cookie count after reload: %d", len(reload.jar.Cookies))
+	}
+}
+
+func TestCookieFileLoadWithoutLoginCookieKeepsCookies(t *testing.T) {
+	content := strings.Join([]string{
+		netscapeCookieHeader,
+		".example.com\tTRUE\t/\tFALSE\t2147483647\tcf_clearance\ttoken-value",
+		"",
+	}, "\n")
+
+	tmp, err := os.CreateTemp("", "cookie-load-no-login-*.txt")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	defer os.Remove(tmp.Name())
+
+	if _, err := tmp.WriteString(content); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+	if err := tmp.Close(); err != nil {
+		t.Fatalf("close temp file: %v", err)
+	}
+
+	cm := NewCookieManager()
+	if err := cm.LoadFromFile(tmp.Name()); err != nil {
+		t.Fatalf("load cookie file: %v", err)
+	}
+
+	if len(cm.jar.Cookies) != 1 {
+		t.Fatalf("expected cookies to be preserved, got %d", len(cm.jar.Cookies))
+	}
+	if cm.jar.Cookies[0].Name != "cf_clearance" {
+		t.Fatalf("unexpected cookie name: %q", cm.jar.Cookies[0].Name)
 	}
 }
 

@@ -70,6 +70,7 @@ Here are all the available command-line flags:
 
 | Flag              | Description                                     | Default                |
 | ----------------- | ----------------------------------------------- | ---------------------- |
+| `--config`        | TOML config file path                           | auto-discover          |
 | `--tid`           | Thread ID (for online fetching)                 |                        |
 | `--input`         | Input HTML file path                            |                        |
 | `--output`        | Output Markdown file path                       | `post.md`              |
@@ -94,7 +95,39 @@ Here are all the available command-line flags:
 
 ## Configuration
 
-In addition to command-line flags, `south2md` can be configured via a TOML file. The configuration options correspond to the command-line flags and allow for more advanced customization of selectors and formatting.
+`south2md` uses a layered configuration model:
+
+1. `defaults`
+2. `config file` (TOML)
+3. `environment variables`
+4. `flags / positional args`
+
+Higher layers override lower layers.
+
+Config file discovery order:
+
+1. `--config=/path/to/south2md.toml`
+2. `SOUTH2MD_CONFIG=/path/to/south2md.toml`
+3. `./south2md.toml`
+4. `$XDG_CONFIG_HOME/south2md/config.toml` (or platform user config dir fallback)
+
+Environment variable examples:
+
+- `SOUTH2MD_TID`
+- `SOUTH2MD_INPUT`
+- `SOUTH2MD_OUTPUT`
+- `SOUTH2MD_OFFLINE`
+- `SOUTH2MD_COOKIE_FILE`
+- `SOUTH2MD_TIMEOUT`
+- `SOUTH2MD_MAX_CONCURRENT`
+- `SOUTH2MD_DEBUG`
+- `SOUTH2MD_GOFILE_ENABLE`
+
+Example:
+
+```sh
+SOUTH2MD_TID=2636739 SOUTH2MD_OUTPUT=./exports south2md --debug
+```
 
 ## Dependencies
 
