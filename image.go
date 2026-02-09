@@ -10,23 +10,19 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
-
-	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/text"
 )
+
+var imageLinkPattern = regexp.MustCompile(`!\[[^\]]*\]\(\s*(<)?([^)\s>]+)(>)?([^)]*)\)`)
 
 // ImageHandler handles image downloading, caching and processing
 type ImageHandler struct {
 	cacheDir   string
 	rootDir    string
 	download   bool
-	mapping    map[string]string
 	httpClient *http.Client
 }
 
@@ -36,7 +32,6 @@ func NewImageHandler(cacheDir string) *ImageHandler {
 		cacheDir: cacheDir,
 		rootDir:  ".",
 		download: true,
-		mapping:  make(map[string]string),
 		httpClient: &http.Client{
 			Timeout: 0, // No timeout for downloads
 		},
@@ -65,8 +60,7 @@ func (ih *ImageHandler) SetDownloadEnabled(enabled bool) {
 
 // DownloadTask represents an image download task
 type DownloadTask struct {
-	URL  string
-	Post *Post
+	URL string
 }
 
 // DownloadResult represents the result of an image download
@@ -89,106 +83,43 @@ func (ih *ImageHandler) downloadWorker(tasks <-chan DownloadTask, results chan<-
 	}
 }
 
-// DownloadAndCacheImages parses a markdown document, downloads all images,
-// and saves them to a cache directory named by their MD5 hash.
+// DownloadAndCacheImages replaces remote markdown image URLs with cached paths.
 func (ih *ImageHandler) DownloadAndCacheImages(tid string, mdDoc []byte, post *Post) ([]byte, error) {
-	// Build map of existing images for quick lookup
-	existingImages := make(map[string]*Image)
-	for i := range post.Images {
-		existingImages[post.Images[i].URL] = &post.Images[i]
-	}
-
-	// Create a Goldmark instance for parsing
-	md := goldmark.New(goldmark.WithParserOptions(parser.WithAutoHeadingID()))
-
-	// Step 1: Parse the document
-	doc := md.Parser().Parse(text.NewReader(mdDoc))
-
-	// Step 2: Walk the AST to collect image URLs for concurrent download
-	// Pre-allocate slices with estimated capacity to reduce allocations
-	estimatedImageCount := bytes.Count(mdDoc, []byte("![")) // Rough estimate based on markdown image syntax
-	if estimatedImageCount == 0 {
-		estimatedImageCount = 10 // Default capacity
-	}
-
-	imageNodes := make([]*ast.Image, 0, estimatedImageCount)
-	imageURLs := make([]string, 0, estimatedImageCount)
-
-	err := ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-
-		if n.Kind() == ast.KindImage {
-			img := n.(*ast.Image)
-			imageURL := string(img.Destination)
-
-			if ih.isRemoteURL(imageURL) {
-				if _, ok := ih.mapping[imageURL]; ok {
-					return ast.WalkContinue, nil
-				}
-
-				// Check if image already cached in metadata
-				if existing, ok := existingImages[imageURL]; ok && existing.Downloaded {
-					ih.mapping[imageURL] = existing.Local
-					slog.Info("Reusing cached image", "url", imageURL, "path", existing.Local)
-					return ast.WalkContinue, nil
-				}
-
-				imageURLs = append(imageURLs, imageURL)
-				imageNodes = append(imageNodes, img)
+	mapping := make(map[string]string)
+	existingImages := make(map[string]string)
+	if post != nil {
+		for i := range post.Images {
+			if !post.Images[i].Downloaded || post.Images[i].URL == "" || post.Images[i].Local == "" {
+				continue
 			}
+			existingImages[post.Images[i].URL] = post.Images[i].Local
 		}
-		return ast.WalkContinue, nil
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("error during AST walk: %w", err)
 	}
 
-	// No images to download
+	imageURLs := ih.extractRemoteImageURLs(mdDoc)
 	if len(imageURLs) == 0 {
-		return ih.convertASTToMarkdown(md, mdDoc, doc)
+		return mdDoc, nil
 	}
 
-	// Step 3: Download images concurrently when enabled
-	if ih.download {
-		ih.downloadImagesConcurrently(tid, imageURLs, post)
-	}
-
-	// Step 4: Walk the AST again to replace URLs with cached paths
-	err = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
+	pending := make([]string, 0, len(imageURLs))
+	for _, imageURL := range imageURLs {
+		if local, ok := existingImages[imageURL]; ok {
+			mapping[imageURL] = local
+			slog.Info("Reusing cached image", "url", imageURL, "path", local)
+			continue
 		}
-
-		if n.Kind() == ast.KindImage {
-			img := n.(*ast.Image)
-			originalURL := string(img.Destination)
-
-			if ih.isRemoteURL(originalURL) {
-				if cachedFile, ok := ih.mapping[originalURL]; ok {
-					// Replace the destination with the new, local path.
-					// Path is relative to the markdown file location (tid/post.md -> tid/images/filename)
-					newPath := filepath.Join(ih.cacheDir, cachedFile)
-					img.Destination = []byte(newPath)
-					slog.Info("Updated image path", "original_url", originalURL, "new_path", newPath)
-				}
-			}
-		}
-		return ast.WalkContinue, nil
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("error during URL replacement: %w", err)
+		pending = append(pending, imageURL)
 	}
 
-	// Step 5: Convert the AST back to markdown
-	return ih.convertASTToMarkdown(md, mdDoc, doc)
+	if ih.download && len(pending) > 0 {
+		ih.downloadImagesConcurrently(tid, pending, post, mapping)
+	}
+
+	return ih.replaceImageURLs(mdDoc, mapping), nil
 }
 
 // downloadImagesConcurrently downloads multiple images using a worker pool
-func (ih *ImageHandler) downloadImagesConcurrently(tid string, imageURLs []string, post *Post) map[string]string {
+func (ih *ImageHandler) downloadImagesConcurrently(tid string, imageURLs []string, post *Post, mapping map[string]string) {
 	numWorkers := runtime.NumCPU()
 	if numWorkers > 8 {
 		numWorkers = 8 // Cap at 8 workers to avoid overwhelming the server
@@ -206,8 +137,8 @@ func (ih *ImageHandler) downloadImagesConcurrently(tid string, imageURLs []strin
 
 	// Send tasks to workers
 	go func() {
-		for _, url := range imageURLs {
-			tasks <- DownloadTask{URL: url, Post: post}
+		for _, rawURL := range imageURLs {
+			tasks <- DownloadTask{URL: rawURL}
 		}
 		close(tasks)
 	}()
@@ -225,16 +156,14 @@ func (ih *ImageHandler) downloadImagesConcurrently(tid string, imageURLs []strin
 			continue
 		}
 
-		ih.processDownloadedImage(tid, result.URL, result.ImageData, post)
+		ih.processDownloadedImage(tid, result.URL, result.ImageData, post, mapping)
 	}
-
-	return ih.mapping
 }
 
 // processDownloadedImage processes a downloaded image and updates the mapping
-func (ih *ImageHandler) processDownloadedImage(tid, url string, imageData []byte, post *Post) {
+func (ih *ImageHandler) processDownloadedImage(tid, rawURL string, imageData []byte, post *Post, mapping map[string]string) {
 	hash := md5.Sum(imageData)
-	filename := fmt.Sprintf("%x%s", hash, filepath.Ext(url))
+	filename := fmt.Sprintf("%x%s", hash, filepath.Ext(rawURL))
 	filePath := filepath.Join(ih.rootDir, tid, ih.cacheDir, filename)
 
 	// Check if file already exists
@@ -247,35 +176,95 @@ func (ih *ImageHandler) processDownloadedImage(tid, url string, imageData []byte
 		}
 	}
 
-	slog.Info("Cached image successfully", "original_url", url, "cached_path", filePath)
-	ih.mapping[url] = filename
+	slog.Info("Cached image successfully", "original_url", rawURL, "cached_path", filePath)
+	mapping[rawURL] = filename
 
-	// Add to post images metadata
-	image := Image{
-		URL:        url,
-		Local:      filename,
-		Alt:        "", // Will be populated during AST walk
-		Downloaded: true,
-		FileSize:   int64(len(imageData)),
+	if post != nil {
+		image := Image{
+			URL:        rawURL,
+			Local:      filename,
+			Alt:        "",
+			Downloaded: true,
+			FileSize:   int64(len(imageData)),
+		}
+		post.Images = append(post.Images, image)
 	}
-	post.Images = append(post.Images, image)
 }
 
-// convertASTToMarkdown converts AST back to markdown format
-func (ih *ImageHandler) convertASTToMarkdown(md goldmark.Markdown, mdDoc []byte, doc ast.Node) ([]byte, error) {
-	var buf bytes.Buffer
-	if err := md.Renderer().Render(&buf, mdDoc, doc); err != nil {
-		return nil, fmt.Errorf("failed to render markdown: %w", err)
+func (ih *ImageHandler) extractRemoteImageURLs(mdDoc []byte) []string {
+	matches := imageLinkPattern.FindAllSubmatchIndex(mdDoc, -1)
+	if len(matches) == 0 {
+		return nil
 	}
 
-	// The renderer produces HTML, but we want markdown
-	// We'll use the html-to-markdown converter that's already used in generator.go
-	markdown, err := htmltomarkdown.ConvertString(buf.String())
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert HTML back to markdown: %w", err)
+	seen := make(map[string]struct{}, len(matches))
+	urls := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) < 6 || match[4] < 0 || match[5] < 0 {
+			continue
+		}
+		imageURL := string(mdDoc[match[4]:match[5]])
+		if !ih.isRemoteURL(imageURL) {
+			continue
+		}
+		if _, ok := seen[imageURL]; ok {
+			continue
+		}
+		seen[imageURL] = struct{}{}
+		urls = append(urls, imageURL)
 	}
 
-	return []byte(markdown), nil
+	return urls
+}
+
+func (ih *ImageHandler) replaceImageURLs(mdDoc []byte, mapping map[string]string) []byte {
+	if len(mapping) == 0 {
+		return mdDoc
+	}
+
+	matches := imageLinkPattern.FindAllSubmatchIndex(mdDoc, -1)
+	if len(matches) == 0 {
+		return mdDoc
+	}
+
+	var out bytes.Buffer
+	out.Grow(len(mdDoc) + len(matches)*8)
+
+	last := 0
+	for _, match := range matches {
+		if len(match) < 6 || match[4] < 0 || match[5] < 0 {
+			continue
+		}
+
+		start := match[0]
+		end := match[1]
+		urlStart := match[4]
+		urlEnd := match[5]
+
+		if start < last {
+			continue
+		}
+		out.Write(mdDoc[last:start])
+
+		originalURL := string(mdDoc[urlStart:urlEnd])
+		cachedFile, ok := mapping[originalURL]
+		if !ok {
+			out.Write(mdDoc[start:end])
+			last = end
+			continue
+		}
+
+		newPath := strings.ReplaceAll(filepath.Join(ih.cacheDir, cachedFile), "\\", "/")
+		out.Write(mdDoc[start:urlStart])
+		out.WriteString(newPath)
+		out.Write(mdDoc[urlEnd:end])
+		last = end
+
+		slog.Info("Updated image path", "original_url", originalURL, "new_path", newPath)
+	}
+
+	out.Write(mdDoc[last:])
+	return out.Bytes()
 }
 
 // downloadImage fetches image data from a URL.

@@ -44,21 +44,7 @@ func buildRuntimeConfig(cmd *cobra.Command, args []string) (*runtimeConfig, erro
 		return nil, fmt.Errorf("反序列化配置失败: %w", err)
 	}
 
-	values.TID = strings.TrimSpace(values.TID)
-	values.InputFile = strings.TrimSpace(values.InputFile)
-	values.OutputFile = strings.TrimSpace(values.OutputFile)
-	values.CacheDir = strings.TrimSpace(values.CacheDir)
-	values.BaseURL = strings.TrimSpace(values.BaseURL)
-	values.HTTPCookieFile = strings.TrimSpace(values.HTTPCookieFile)
-	values.HTTPUserAgent = strings.TrimSpace(values.HTTPUserAgent)
-	values.GofileTool = strings.TrimSpace(values.GofileTool)
-	values.GofileDir = strings.TrimSpace(values.GofileDir)
-	values.GofileToken = strings.TrimSpace(values.GofileToken)
-	values.GofileVenvDir = strings.TrimSpace(values.GofileVenvDir)
-
-	if values.TID == "" && len(args) > 0 {
-		values.TID = args[0]
-	}
+	applyFlagsToConfig(&values, args)
 
 	cfg := &runtimeConfig{
 		App:        &values.Config,
@@ -72,6 +58,24 @@ func buildRuntimeConfig(cmd *cobra.Command, args []string) (*runtimeConfig, erro
 		return nil, err
 	}
 	return cfg, nil
+}
+
+func applyFlagsToConfig(values *runtimeConfigValues, args []string) {
+	values.TID = strings.TrimSpace(values.TID)
+	values.InputFile = strings.TrimSpace(values.InputFile)
+	values.OutputFile = strings.TrimSpace(values.OutputFile)
+	values.CacheDir = strings.TrimSpace(values.CacheDir)
+	values.BaseURL = strings.TrimSpace(values.BaseURL)
+	values.HTTPCookieFile = strings.TrimSpace(values.HTTPCookieFile)
+	values.HTTPUserAgent = strings.TrimSpace(values.HTTPUserAgent)
+	values.GofileTool = strings.TrimSpace(values.GofileTool)
+	values.GofileDir = strings.TrimSpace(values.GofileDir)
+	values.GofileToken = strings.TrimSpace(values.GofileToken)
+	values.GofileVenvDir = strings.TrimSpace(values.GofileVenvDir)
+
+	if values.TID == "" && len(args) > 0 {
+		values.TID = strings.TrimSpace(args[0])
+	}
 }
 
 func validateRuntimeConfig(cfg *runtimeConfig) error {

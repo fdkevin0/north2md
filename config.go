@@ -27,14 +27,15 @@ type Config struct {
 	SelectorImages      string `toml:"images" mapstructure:"images"`             // 图片选择器
 
 	// HTTP请求配置
-	HTTPTimeout       time.Duration     `toml:"timeout" mapstructure:"timeout"`               // 请求超时时间
-	HTTPUserAgent     string            `toml:"user_agent" mapstructure:"user_agent"`         // User-Agent
-	HTTPMaxRetries    int               `toml:"max_retries" mapstructure:"max_retries"`       // 最大重试次数
-	HTTPRetryDelay    time.Duration     `toml:"retry_delay" mapstructure:"retry_delay"`       // 重试间隔
-	HTTPMaxConcurrent int               `toml:"max_concurrent" mapstructure:"max_concurrent"` // 最大并发数
-	HTTPCookieFile    string            `toml:"cookie_file" mapstructure:"cookie_file"`       // Cookie文件路径
-	HTTPEnableCookie  bool              `toml:"enable_cookie" mapstructure:"enable_cookie"`   // 是否启用Cookie
-	HTTPCustomHeaders map[string]string `toml:"custom_headers" mapstructure:"custom_headers"` // 自定义请求头
+	HTTPTimeout          time.Duration     `toml:"timeout" mapstructure:"timeout"`                     // 请求超时时间
+	HTTPUserAgent        string            `toml:"user_agent" mapstructure:"user_agent"`               // User-Agent
+	HTTPMaxRetries       int               `toml:"max_retries" mapstructure:"max_retries"`             // 最大重试次数
+	HTTPRetryDelay       time.Duration     `toml:"retry_delay" mapstructure:"retry_delay"`             // 重试间隔
+	HTTPMaxConcurrent    int               `toml:"max_concurrent" mapstructure:"max_concurrent"`       // 最大并发数
+	HTTPStrictPagination bool              `toml:"strict_pagination" mapstructure:"strict_pagination"` // 分页抓取失败是否严格报错
+	HTTPCookieFile       string            `toml:"cookie_file" mapstructure:"cookie_file"`             // Cookie文件路径
+	HTTPEnableCookie     bool              `toml:"enable_cookie" mapstructure:"enable_cookie"`         // 是否启用Cookie
+	HTTPCustomHeaders    map[string]string `toml:"custom_headers" mapstructure:"custom_headers"`       // 自定义请求头
 
 	// Markdown生成配置
 	MarkdownIncludeAuthorInfo bool   `toml:"include_author_info" mapstructure:"include_author_info"` // 是否包含作者详细信息
@@ -62,14 +63,15 @@ type Config struct {
 
 // HTTPOptions HTTP请求配置 (向后兼容)
 type HTTPOptions struct {
-	Timeout       time.Duration     `toml:"timeout"`
-	UserAgent     string            `toml:"user_agent"`
-	MaxRetries    int               `toml:"max_retries"`
-	RetryDelay    time.Duration     `toml:"retry_delay"`
-	MaxConcurrent int               `toml:"max_concurrent"`
-	CookieFile    string            `toml:"cookie_file"`
-	EnableCookie  bool              `toml:"enable_cookie"`
-	CustomHeaders map[string]string `toml:"custom_headers"`
+	Timeout          time.Duration     `toml:"timeout"`
+	UserAgent        string            `toml:"user_agent"`
+	MaxRetries       int               `toml:"max_retries"`
+	RetryDelay       time.Duration     `toml:"retry_delay"`
+	MaxConcurrent    int               `toml:"max_concurrent"`
+	StrictPagination bool              `toml:"strict_pagination"`
+	CookieFile       string            `toml:"cookie_file"`
+	EnableCookie     bool              `toml:"enable_cookie"`
+	CustomHeaders    map[string]string `toml:"custom_headers"`
 }
 
 // HTMLSelectors CSS选择器配置 (向后兼容)
@@ -115,14 +117,15 @@ var defaultConfig = &Config{
 	SelectorImages:      "img",
 
 	// HTTP配置
-	HTTPTimeout:       30 * time.Second,
-	HTTPUserAgent:     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
-	HTTPMaxRetries:    3,
-	HTTPRetryDelay:    2 * time.Second,
-	HTTPMaxConcurrent: 5,
-	HTTPCookieFile:    DefaultCookieFile("south2md"),
-	HTTPEnableCookie:  true,
-	HTTPCustomHeaders: make(map[string]string),
+	HTTPTimeout:          30 * time.Second,
+	HTTPUserAgent:        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+	HTTPMaxRetries:       3,
+	HTTPRetryDelay:       2 * time.Second,
+	HTTPMaxConcurrent:    5,
+	HTTPStrictPagination: true,
+	HTTPCookieFile:       DefaultCookieFile("south2md"),
+	HTTPEnableCookie:     true,
+	HTTPCustomHeaders:    make(map[string]string),
 
 	// Markdown配置
 	MarkdownIncludeAuthorInfo: true,

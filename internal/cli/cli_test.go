@@ -25,6 +25,7 @@ func resetCLIStateForTest(t *testing.T) {
 	flagNoCache = false
 	flagTimeout = int(defaultConfig.HTTPTimeout.Seconds())
 	flagMaxConcurrent = defaultConfig.HTTPMaxConcurrent
+	flagStrictPagination = defaultConfig.HTTPStrictPagination
 	flagDebug = false
 	flagUserAgent = defaultConfig.HTTPUserAgent
 	flagGofileEnable = defaultConfig.GofileEnable

@@ -52,6 +52,7 @@ func applyViperDefaults(v *viper.Viper) {
 	v.SetDefault("cookie_file", defaultConfig.HTTPCookieFile)
 	v.SetDefault("timeout", int(defaultConfig.HTTPTimeout.Seconds()))
 	v.SetDefault("max_concurrent", defaultConfig.HTTPMaxConcurrent)
+	v.SetDefault("strict_pagination", defaultConfig.HTTPStrictPagination)
 	v.SetDefault("user_agent", defaultConfig.HTTPUserAgent)
 	v.SetDefault("gofile_enable", defaultConfig.GofileEnable)
 	v.SetDefault("gofile_tool", defaultConfig.GofileTool)

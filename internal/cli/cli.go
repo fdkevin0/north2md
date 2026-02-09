@@ -24,6 +24,7 @@ var (
 	flagNoCache            bool
 	flagTimeout            int
 	flagMaxConcurrent      int
+	flagStrictPagination   bool
 	flagDebug              bool
 	flagUserAgent          string
 	flagGofileEnable       bool
@@ -96,6 +97,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagDebug, "debug", false, "启用调试日志")
 	rootCmd.PersistentFlags().IntVar(&flagTimeout, "timeout", 30, "HTTP请求超时(秒)")
 	rootCmd.PersistentFlags().IntVar(&flagMaxConcurrent, "max-concurrent", 5, "最大并发下载数")
+	rootCmd.PersistentFlags().BoolVar(&flagStrictPagination, "strict-pagination", defaultConfig.HTTPStrictPagination, "分页抓取失败时是否立即报错")
 	rootCmd.PersistentFlags().StringVar(&flagUserAgent, "user-agent", defaultConfig.HTTPUserAgent, "HTTP User-Agent")
 	rootCmd.PersistentFlags().BoolVar(&flagGofileEnable, "gofile-enable", defaultConfig.GofileEnable, "启用gofile下载")
 	rootCmd.PersistentFlags().StringVar(&flagGofileTool, "gofile-tool", defaultConfig.GofileTool, "gofile-downloader脚本路径")
@@ -159,23 +161,16 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 	}
 
 	// 创建HTTP客户端
-	httpOptions := &south2md.HTTPOptions{
-		Timeout:       cfg.HTTPTimeout,
-		UserAgent:     cfg.HTTPUserAgent,
-		MaxRetries:    cfg.HTTPMaxRetries,
-		RetryDelay:    cfg.HTTPRetryDelay,
-		MaxConcurrent: cfg.HTTPMaxConcurrent,
-		CookieFile:    cfg.HTTPCookieFile,
-		EnableCookie:  cfg.HTTPEnableCookie,
-		CustomHeaders: cfg.HTTPCustomHeaders,
-	}
+	httpOptions := buildHTTPOptions(cfg)
 	client := south2md.NewHTTPClient(httpOptions)
 
 	// 创建Fetcher
 	httpClient := south2md.NewFetcher(client, httpOptions, cfg.BaseURL)
 
+	selectors := buildSelectors(cfg)
+
 	// 创建帖子解析器
-	postParser := south2md.NewPostParser(buildSelectors(cfg))
+	postParser := south2md.NewPostParser(selectors)
 
 	markdownGenerator := newMarkdownGenerator(cfg)
 
@@ -185,7 +180,7 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 	if cfg.TID != "" {
 		// 在线抓取模式
 		var fetchErr error
-		post, fetchErr = httpClient.FetchPostWithPagination(cfg.TID, postParser, buildSelectors(cfg))
+		post, fetchErr = httpClient.FetchPostWithPagination(cfg.TID, postParser, selectors)
 		if fetchErr != nil {
 			return fmt.Errorf("抓取帖子失败: %v", fetchErr)
 		}
@@ -233,6 +228,20 @@ func runExtractor(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func buildHTTPOptions(cfg *south2md.Config) *south2md.HTTPOptions {
+	return &south2md.HTTPOptions{
+		Timeout:          cfg.HTTPTimeout,
+		UserAgent:        cfg.HTTPUserAgent,
+		MaxRetries:       cfg.HTTPMaxRetries,
+		RetryDelay:       cfg.HTTPRetryDelay,
+		MaxConcurrent:    cfg.HTTPMaxConcurrent,
+		StrictPagination: cfg.HTTPStrictPagination,
+		CookieFile:       cfg.HTTPCookieFile,
+		EnableCookie:     cfg.HTTPEnableCookie,
+		CustomHeaders:    cfg.HTTPCustomHeaders,
+	}
 }
 
 func buildSelectors(cfg *south2md.Config) *south2md.HTMLSelectors {

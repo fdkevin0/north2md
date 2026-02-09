@@ -10,6 +10,7 @@ import (
 	"os"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -443,24 +444,21 @@ func (f *Fetcher) fetchPagesConcurrently(tid string, totalPages int, selectors *
 	pageParsers := make([]*PostParser, totalPages)
 	pageParsers[0] = parsers[0] // 第一页解析器
 
+	failedPages := make([]int, 0)
 	for result := range results {
 		if result.Error != nil {
 			slog.Error("Failed to fetch post page", "page", result.Page, "error", result.Error)
+			failedPages = append(failedPages, result.Page)
 			continue
 		}
 
 		pageParsers[result.Page-1] = result.Parser
 	}
 
-	// 过滤掉nil解析器
-	var validParsers []*PostParser
-	for _, parser := range pageParsers {
-		if parser != nil {
-			validParsers = append(validParsers, parser)
-		}
+	if len(failedPages) > 0 {
+		sort.Ints(failedPages)
 	}
-
-	return validParsers, nil
+	return resolvePageFetchResults(pageParsers, failedPages, f.config.StrictPagination)
 }
 
 // PageFetchTask represents a page fetching task
@@ -560,4 +558,23 @@ func cloneHeaders(headers *http.Header) http.Header {
 		cloned[key] = copied
 	}
 	return cloned
+}
+
+func resolvePageFetchResults(pageParsers []*PostParser, failedPages []int, strict bool) ([]*PostParser, error) {
+	if len(failedPages) > 0 {
+		if strict {
+			return nil, fmt.Errorf("分页抓取失败，缺失页: %v", failedPages)
+		}
+		slog.Warn("Pagination fetch completed with missing pages", "missing_pages", failedPages)
+	}
+
+	// 过滤掉nil解析器
+	validParsers := make([]*PostParser, 0, len(pageParsers))
+	for _, parser := range pageParsers {
+		if parser != nil {
+			validParsers = append(validParsers, parser)
+		}
+	}
+
+	return validParsers, nil
 }
