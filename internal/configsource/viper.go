@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fdkevin0/south2md"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -15,7 +14,6 @@ import (
 
 func NewViperForCommand(cmd *cobra.Command, configFlagValue string) (*viper.Viper, error) {
 	v := viper.New()
-	applyViperDefaults(v)
 
 	v.SetEnvPrefix("SOUTH2MD")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
@@ -41,26 +39,6 @@ func NewViperForCommand(cmd *cobra.Command, configFlagValue string) (*viper.Vipe
 
 	applyCompatibilityOverrides(v, cmd)
 	return v, nil
-}
-
-func applyViperDefaults(v *viper.Viper) {
-	defaultConfig := south2md.NewDefaultConfig()
-	v.SetDefault("tid", defaultConfig.TID)
-	v.SetDefault("output_file", defaultConfig.OutputFile)
-	v.SetDefault("cache_dir", defaultConfig.CacheDir)
-	v.SetDefault("base_url", defaultConfig.BaseURL)
-	v.SetDefault("cookie_file", defaultConfig.HTTPCookieFile)
-	v.SetDefault("timeout", int(defaultConfig.HTTPTimeout.Seconds()))
-	v.SetDefault("max_concurrent", defaultConfig.HTTPMaxConcurrent)
-	v.SetDefault("strict_pagination", defaultConfig.HTTPStrictPagination)
-	v.SetDefault("user_agent", defaultConfig.HTTPUserAgent)
-	v.SetDefault("gofile_enable", defaultConfig.GofileEnable)
-	v.SetDefault("gofile_tool", defaultConfig.GofileTool)
-	v.SetDefault("gofile_dir", defaultConfig.GofileDir)
-	v.SetDefault("gofile_token", defaultConfig.GofileToken)
-	v.SetDefault("gofile_venv_dir", defaultConfig.GofileVenvDir)
-	v.SetDefault("gofile_skip_existing", defaultConfig.GofileSkipExisting)
-	v.SetDefault("enable_cache", defaultConfig.CacheEnableCache)
 }
 
 func bindViperFlags(v *viper.Viper, cmd *cobra.Command) error {

@@ -357,6 +357,30 @@
   * 可维护性与演进策略。
 * 在没有必要澄清的重要信息缺失时，尽量减少无谓往返和问题式对话，直接给出高质量思考后的结论与实现建议。
 
+---
+
+## 10 · 配置系统设计原则（Config）
+
+* 默认值必须遵循 **Single Source of Truth**：
+  * 仅在 `config.go` 的 `defaultConfig` / `NewDefaultConfig` 定义；
+  * 其他层（如 CLI、configsource、Viper）只能消费该默认值，不得重复写字面量默认值。
+* 配置分层职责：
+  * `configsource` 负责读取与优先级合并（flag/env/file）；
+  * `Config` 结构体层负责业务默认语义与类型落地；
+  * 避免在读取层承载业务默认值策略。
+* 同一字段默认值只允许注入一次：
+  * 禁止同时使用 `viper.SetDefault(...)` 与结构体预填默认值去兜底同一字段；
+  * 优先采用“结构体预填默认值 + 反序列化覆盖”的模式。
+* 优先级约定必须稳定且可测试：
+  * 固定优先级为 `flag > env > config file > default`；
+  * 每次配置链路重构都应补充或更新对应优先级测试。
+* 兼容逻辑集中管理：
+  * alias、历史 env 键、反向开关（如 `no_cache` -> `enable_cache`）集中在单点函数；
+  * 兼容分支需说明保留原因与退出条件，避免散落。
+* 配置重构优先最小可审阅改动：
+  * 一次只处理一个行为面；
+  * 每步变更后使用 `go test ./...` 验证，先保行为一致再做进一步清理。
+
 ## Project Structure & Module Organization
 This repository is a Go CLI application for scraping and exporting forum threads to Markdown.
 
